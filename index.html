@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>จดบิล – จดค่า Subscription ให้ไม่หลุดสักรายการ</title>
+<meta name="description" content="จดค่า subscription ดูยอดรายเดือนและรายปี เตือนก่อนตัดเงิน เตือนก่อนหมดช่วงทดลองใช้ รองรับหลายสกุลเงิน">
+<meta name="theme-color" content="#7b6ef6">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;700&family=Prompt:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+<script>try{var t=localStorage.getItem("jb-theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
+</head>
+<body>
+<div id="root"><div class="splash"><div class="splash-in"><div class="sk"></div></div></div></div>
+
+<div class="app" id="app" hidden>
+  <nav class="nav" id="nav" aria-label="เมนูหลัก"></nav>
+  <main class="main">
+    <section id="v-home" class="view" hidden></section>
+    <section id="v-list" class="view" hidden></section>
+    <section id="v-cal" class="view" hidden></section>
+    <section id="v-set" class="view" hidden></section>
+    <section id="v-add" class="view" hidden></section>
+  </main>
+</div>
+
+<div class="sh" id="sheet" hidden>
+  <div class="sc" role="dialog" aria-modal="true" aria-labelledby="shT">
+    <div class="sht"><b id="shT"></b><button type="button" id="shX" aria-label="ปิด">✕</button></div>
+    <div id="shB"></div>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<noscript><p style="padding:24px">ต้องเปิด JavaScript เพื่อใช้งานแอปนี้</p></noscript>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
