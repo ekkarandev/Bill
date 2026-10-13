@@ -1,6 +1,6 @@
 // หน้าจอทั้งหมดของแอป
 import {
-  $, h, ico, svg, S, nav, SYM, MN, MS, COL, DEF_RATE, EMO, WDN, rate, past, syncRates,
+  $, h, ico, svg, S, nav, SYM, MN, MS, COL, DEF_RATE, EMO, WDN, rate, past, syncRates, buzz, greet, reduceMotion,
   TD, iso, prs, addD, daysTo, dstr, fdate, dayTxt, occ, nxt, thb, mon, cyl, remList, remOf, remTxt,
   money, price, subtxt, bdg, acc, payTxt, catOf,
   toast, persist, saveSub, removeSub, batchOps, newId, applyTheme, sheet, closeSheet, ask, fld, remChips,
@@ -80,8 +80,22 @@ export function showDetail(s) {
 }
 
 /* ───────── ภาพรวม ───────── */
+// ตัวเลขวิ่งจาก 0 ไปค่าจริง เล่นเฉพาะตอนเข้าหน้าภาพรวม (ไม่เล่นซ้ำตอนข้อมูลรีเฟรช)
+let animNext = true;
+export const armIntro = () => { animNext = true; };
+function countUp(el, to, fmt) {
+  if (reduceMotion() || !(to > 0)) return;
+  const t0 = performance.now(), D = 700;
+  const step = t => {
+    const p = Math.min(1, (t - t0) / D);
+    el.textContent = fmt(to * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(step);
+  };
+  el.textContent = fmt(0);
+  requestAnimationFrame(step);
+}
 // การ์ดวันที่ตัวใหญ่ บนสุดของหน้าภาพรวม พร้อมทางลัดไปประวัติ
-function heroCard() {
+function heroCard(anim) {
   const A = new Date(TD.getFullYear(), TD.getMonth(), 1);
   const paid = S.subs.reduce((x, s) => x + occ(s, A, addD(TD, -1)).reduce((y, d) => y + thb(s, d), 0), 0);
   const nx = S.subs.filter(s => !s.paused && nxt(s)).map(s => [s, nxt(s)]).sort((p, q) => p[1] - q[1])[0];
@@ -92,6 +106,7 @@ function heroCard() {
   if (S.subs.length) {
     const hb = h("button", "hero-b", null, [h("small", null, "จ่ายแล้วเดือนนี้"), h("b", null, money(paid)), ico("chevR", 16)]);
     hb.type = "button"; hb.onclick = () => nav.go("his");
+    if (anim) countUp(hb.querySelector("b"), paid, money);
     kids.push(h("div", "hero-row", null, [
       nx ? h("div", null, null, [h("small", null, "ตัดเงินถัดไป"), h("b", null, nx[0].name + " · " + dayTxt(daysTo(nx[1])))]) : null, hb,
     ]));
@@ -102,7 +117,9 @@ export function renderHome() {
   const v = $("v-home");
   v.textContent = "";
   const first = ((S.user && S.user.name) || "").split(" ")[0];
-  v.append(head("ภาพรวม", "สวัสดี" + (first ? " " + first : ""), addBtn()), heroCard());
+  const anim = animNext;
+  animNext = false;
+  v.append(head("ภาพรวม", greet() + (first ? " " + first : ""), addBtn()), heroCard(anim));
   if (!S.subs.length) {
     v.append(h("div", "card empty-card", null, [
       h("div", "empty-ic", null, [ico("calendar", 34)]),
@@ -149,12 +166,18 @@ export function renderHome() {
   // การ์ดสรุป
   const mo = S.subs.reduce((x, s) => x + mon(s), 0);
   const st = (c, t, val, sub) => h("div", "st4 " + c, null, [h("div", null, t), h("b", null, val), h("small", null, sub)]);
-  v.append(h("div", "grid4", null, [
-    st("s1", "ต้องจ่ายเดือนนี้", money(S.subs.reduce((x, s) => x + mt(s), 0)), "นับตามวันตัดจริง"),
+  const tm = S.subs.reduce((x, s) => x + mt(s), 0);
+  const g4 = h("div", "grid4", null, [
+    st("s1", "ต้องจ่ายเดือนนี้", money(tm), "นับตามวันตัดจริง"),
     st("s3", "เฉลี่ยต่อเดือน", money(mo), "รวมรายปีหารเฉลี่ยแล้ว"),
     st("s2", "รวมต่อปี", money(mo * 12), "ประมาณการทั้งปี"),
     st("s4", "รายการที่ใช้อยู่", act.length, "ไม่นับที่หยุดชั่วคราว"),
-  ]));
+  ]);
+  v.append(g4);
+  if (anim) {
+    [tm, mo, mo * 12].forEach((x, i) => countUp(g4.children[i].querySelector("b"), x, money));
+    countUp(g4.children[3].querySelector("b"), act.length, n => String(Math.round(n)));
+  }
 
   // ตัดเงินถัดไป + แยกตามหมวด
   const cols = h("div", "cols");
@@ -205,6 +228,48 @@ export function addSamples() {
 }
 
 /* ───────── รายการทั้งหมด ───────── */
+// ปัดแถวไปทางซ้ายเพื่อหยุดพัก/ลบ (ใช้ pointer events: ทั้งนิ้วและเมาส์) เลื่อนหน้าแนวตั้งยังทำงานปกติ
+let openSw = null;
+document.addEventListener("pointerdown", e => { if (openSw && !e.target.closest(".sw-wrap")) openSw(); });
+function swipeRow(s, row) {
+  const W = 144;
+  const pa = h("button", "sa pa", null, [ico(s.paused ? "play" : "pause", 20), h("span", null, s.paused ? "ต่อ" : "หยุด")]);
+  const de = h("button", "sa de", null, [ico("trash", 20), h("span", null, "ลบ")]);
+  pa.type = de.type = "button"; pa.tabIndex = de.tabIndex = -1;
+  const acts = h("div", "sw-acts", null, [pa, de]), wrap = h("div", "sw-wrap", null, [acts, row]);
+  acts.setAttribute("aria-hidden", "true");
+  let x0 = 0, y0 = 0, base = 0, cur = 0, drag = false, dec = false, moved = false;
+  const set = (x, anim) => { cur = x; row.style.transition = anim ? "transform .2s ease" : "none"; row.style.transform = x ? "translateX(" + x + "px)" : ""; };
+  const close = () => { set(0, true); if (openSw === close) openSw = null; };
+  const end = () => {
+    if (!drag) return;
+    drag = false;
+    if (!dec) return;
+    const o = cur < -W / 2;
+    set(o ? -W : 0, true);
+    if (o) { buzz(8); if (openSw && openSw !== close) openSw(); openSw = close; } else if (openSw === close) openSw = null;
+    setTimeout(() => { moved = false; }, 60);
+  };
+  row.addEventListener("pointerdown", e => { if (e.pointerType === "mouse" && e.button) return; x0 = e.clientX; y0 = e.clientY; base = cur; drag = true; dec = false; });
+  row.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const dx = e.clientX - x0, dy = e.clientY - y0;
+    if (!dec) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (Math.abs(dy) > Math.abs(dx)) { drag = false; return; }
+      dec = true; moved = true;
+      try { row.setPointerCapture(e.pointerId); } catch (er) { /* ignore */ }
+      if (openSw && openSw !== close) openSw();
+    }
+    set(Math.max(-W, Math.min(0, base + dx)), false);
+  });
+  row.addEventListener("pointerup", end);
+  row.addEventListener("pointercancel", end);
+  row.addEventListener("click", e => { if (moved || cur) { e.stopImmediatePropagation(); e.preventDefault(); if (!moved && cur) close(); } }, true);
+  pa.onclick = () => { close(); togglePause(s); toast(s.paused ? "เปิดใช้ " + s.name + " ต่อแล้ว" : "หยุด " + s.name + " ชั่วคราวแล้ว"); };
+  de.onclick = () => { close(); ask("ลบ " + s.name + "?", "รายการนี้จะถูกลบถาวร", "ลบรายการ", () => { removeSub(s.id); toast("ลบ " + s.name + " แล้ว"); }); };
+  return wrap;
+}
 let lt = "all", lq = "", lc = "", ls = "next";
 export function renderList() {
   const v = $("v-list");
@@ -217,7 +282,8 @@ export function renderList() {
     const L = S.subs.filter(s => (lt === "all" || s.cy === lt) && (!lc || s.cat === lc) && (!q || (s.name + " " + (s.plan || "")).toLowerCase().includes(q)));
     L.sort(ls === "price" ? (x, y) => mon({ ...y, paused: false }) - mon({ ...x, paused: false }) : ls === "name" ? (x, y) => x.name.localeCompare(y.name, "th") : (x, y) => nx(x) - nx(y));
     if (!L.length) body.append(h("p", "empty", S.subs.length ? "ไม่พบรายการ ลองเปลี่ยนคำค้นหาหรือตัวกรอง" : "ยังไม่มีรายการ กดปุ่ม เพิ่ม เพื่อเริ่มจด"));
-    L.forEach(s => body.append(rowFor(s, h("div", "rr", null, [amt(s), nextChip(s)]), null, () => showDetail(s))));
+    L.forEach(s => body.append(swipeRow(s, rowFor(s, h("div", "rr", null, [amt(s), nextChip(s)]), null, () => showDetail(s)))));
+    if (L.length && matchMedia("(pointer: coarse)").matches) body.append(h("p", "fine sw-hint", "เลื่อนรายการไปทางซ้ายเพื่อหยุดพักหรือลบ"));
   };
   [["all", "ทั้งหมด"], ["m", "รายเดือน"], ["y", "รายปี"], ["c", "อื่นๆ"]].forEach(([k, t]) => {
     const b = h("button", null, t + " " + cnt(k));
@@ -468,6 +534,16 @@ function importText(txt) {
   } catch (e) { toast("ไฟล์หรือข้อความไม่ถูกต้อง"); }
 }
 
+function hapSeg() {
+  const w = h("div", "seg tsg"), on = (() => { try { return localStorage.getItem("jb-hap") !== "0"; } catch (e) { return true; } })();
+  [[true, "เปิดสั่น"], [false, "ปิดสั่น"]].forEach(([k, t]) => {
+    const b = h("button", null, t);
+    b.type = "button"; b.setAttribute("aria-pressed", on === k);
+    b.onclick = () => { try { localStorage.setItem("jb-hap", k ? "1" : "0"); } catch (e) { /* ignore */ } if (k) buzz(15); w.replaceWith(hapSeg()); };
+    w.append(b);
+  });
+  return w;
+}
 const SP = {
   gen(v) {
     const cards = h("div", "themes"), cur = h("select"), rt = h("div", "rates");
@@ -501,6 +577,7 @@ const SP = {
     });
     v.append(card("ทั่วไป", "ธีม ภาษา และสกุลเงินที่ใช้สรุปยอด", [
       h("label", null, "ธีม"), cards, h("label", null, "ภาษา"), lang,
+      ...(navigator.vibrate ? [h("label", null, "การสั่นเมื่อกดปุ่ม"), hapSeg()] : []),
       fld("สกุลเงินหลัก (ยอดรวมทุกหน้าจะแปลงเป็นสกุลนี้)", cur),
       h("label", null, "อัตราแลกเปลี่ยน"), rtSeg, rtInfo, rt,
       h("label", null, "โซนเวลา"), h("p", "mut", Intl.DateTimeFormat().resolvedOptions().timeZone),
@@ -615,9 +692,8 @@ function show(html) {
   root().innerHTML = html;
 }
 export function showApp() { root().hidden = true; $("app").hidden = false; }
-export function renderSplash() {
-  show(`<div class="splash"><div class="splash-in">${LOGO}<div class="sk"></div></div></div>`);
-}
+export const SKEL = `<div class="skel-app on"><div class="skel-in"><div class="sk-b sk-t"></div><div class="sk-b sk-hero"></div><div class="sk-g"><div class="sk-b sk-c"></div><div class="sk-b sk-c"></div><div class="sk-b sk-c"></div><div class="sk-b sk-c"></div></div><div class="sk-b sk-r"></div><div class="sk-b sk-r"></div><div class="sk-b sk-r"></div></div></div>`;
+export function renderSplash() { show(SKEL); }
 export function renderLogin(onSign) {
   show(`<main class="login"><button class="lang-b" id="lgLang" type="button">${S.lang === "th" ? "English" : "ไทย"}</button><div class="lg-wrap">
     <section class="lg-copy">

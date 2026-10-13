@@ -1,16 +1,16 @@
 // จุดเริ่มต้นของแอป: ตรวจการล็อกอิน → ฟังข้อมูลจาก Firestore → แสดงหน้าจอ
 import * as B from "./backend.js";
-import { $, h, ico, S, nav, DEF_RATE, defaultCats, refreshToday, applyTheme, initUi, syncRates } from "./core.js";
+import { $, h, ico, S, nav, DEF_RATE, defaultCats, refreshToday, applyTheme, initUi, syncRates, buzz } from "./core.js";
 import { initForm, openForm } from "./form.js";
 import { initLang, setLang } from "./i18n.js";
 import {
   renderHome, renderList, renderCal, renderHistory, renderSettings, resetSettingsPage, avatarOf, LOGO,
-  renderLogin, loginError, renderSetup, renderError, renderSplash, showApp,
+  renderLogin, loginError, renderSetup, renderError, renderSplash, showApp, armIntro,
 } from "./views.js";
 
 const VIEWS = { home: renderHome, list: renderList, cal: renderCal, his: renderHistory, set: renderSettings };
 const NAV = [["home", "home", "ภาพรวม"], ["list", "list", "รายการ"], ["cal", "calendar", "ปฏิทิน"], ["his", "history", "ประวัติ"], ["set", "settings", "ตั้งค่า"]];
-let cur = "home", unsub = null, ready = false, formOpen = false, activeUid = null;
+let shown = "", cur = "home", unsub = null, ready = false, formOpen = false, activeUid = null;
 
 /* ───── เมนู ───── */
 function buildNav() {
@@ -41,6 +41,9 @@ function show(v) {
   ["home", "list", "cal", "his", "set", "add"].forEach(k => { $("v-" + k).hidden = k !== v; });
   document.querySelectorAll(".nav-b").forEach(b => b.setAttribute("aria-current", b.dataset.v === (v === "add" ? "list" : v)));
   if (v !== "set") resetSettingsPage();
+  if (v !== shown) armIntro();
+  shown = v;
+  $("fab").hidden = !VIEWS[v] || v === "set";
   if (VIEWS[v]) VIEWS[v]();
   scrollTo(0, 0);
 }
@@ -113,6 +116,7 @@ function start(u) {
   }, list => { S.subs = list; gotSubs = true; check(); }, onErr);
 }
 function enter() {
+  try { localStorage.setItem("jb-seen", "1"); } catch (e) { /* ignore */ }
   showApp();
   updateNavUser();
   show(viewFromHash());
@@ -128,6 +132,7 @@ async function doSignIn() {
   try { await B.signIn(); } catch (e) { console.error(e); loginError(authErr(e)); }
 }
 async function signOut() {
+  try { localStorage.removeItem("jb-seen"); } catch (e) { /* ignore */ }
   stop();
   try { await B.signOutUser(); } catch (e) { console.error(e); }
   location.hash = "";
@@ -141,6 +146,10 @@ async function boot() {
   window.addEventListener("langchange", () => { buildNav(); if (ready) { updateNavUser(); show(cur); } });
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (S.theme === "system") applyTheme(false); });
   initUi(); initForm(); buildNav();
+  const fab = h("button", "fab", null, [ico("plus", 26)]); // ปุ่มเพิ่มลอย (เฉพาะจอมือถือ)
+  fab.id = "fab"; fab.type = "button"; fab.hidden = true; fab.setAttribute("aria-label", "เพิ่มรายการ");
+  fab.onclick = () => { buzz(8); nav.openForm(); };
+  $("app").append(fab);
   nav.go = go;
   nav.openForm = s => { formOpen = true; openForm(s); };
   nav.signOut = signOut;

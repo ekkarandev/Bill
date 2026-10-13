@@ -163,6 +163,17 @@ export const acc = id => S.accts.find(a => a.id === id);
 export const payTxt = a => a.name + (a.last4 ? " ••" + a.last4 : "");
 export const catOf = n => S.cats.find(c => c.n === n) || { n: n || "อื่นๆ", e: "📦" };
 
+/* ───────── ตัวช่วยเล็ก ๆ ───────── */
+// สั่นเบา ๆ (รองรับเฉพาะเบราว์เซอร์ที่มี vibrate เช่น Android) ผู้ใช้ปิดได้ที่ตั้งค่า
+export function buzz(p = 10) {
+  try { if (localStorage.getItem("jb-hap") !== "0" && navigator.vibrate) navigator.vibrate(p); } catch (e) { /* ไม่รองรับ */ }
+}
+export function greet() {
+  const t = new Date().getHours();
+  return t >= 5 && t < 12 ? "อรุณสวัสดิ์" : t >= 12 && t < 17 ? "สวัสดียามบ่าย" : t >= 17 && t < 21 ? "สวัสดียามเย็น" : "ดึกแล้วนะ";
+}
+export const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 /* ───────── บันทึกข้อมูล (ผ่าน Firebase) ───────── */
 export function toast(t) {
   const e = $("toast");
@@ -170,10 +181,12 @@ export function toast(t) {
   e.className = "on";
   clearTimeout(toast.t);
   toast.t = setTimeout(() => { e.className = ""; }, 2800);
+  buzz(10);
 }
 export function fail(e) {
   console.error(e);
   const c = (e && e.code) || "";
+  buzz([30, 50, 30]);
   toast(c === "permission-denied" ? "บันทึกไม่ได้ ตรวจสอบ Firestore rules (ดู README ข้อ 5)" : "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
 }
 export const persist = () =>
@@ -237,7 +250,7 @@ export function ask(title, msg, okText, fn, danger = true) {
   const ok = h("button", "btn" + (danger ? " danger" : ""), okText), no = h("button", "btn ghost", "ยกเลิก");
   ok.type = no.type = "button";
   no.onclick = closeSheet;
-  ok.onclick = () => { closeSheet(); fn(); };
+  ok.onclick = () => { closeSheet(); buzz(20); fn(); };
   sheet(title, h("div", null, null, [h("p", "mut", msg), h("div", "sbtn", null, [no, ok])]));
 }
 export function fld(t, el) {

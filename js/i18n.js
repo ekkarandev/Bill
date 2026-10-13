@@ -37,6 +37,10 @@ const D = {
   "ใกล้ตัดเงิน": "Soonest charge", "ราคาสูงสุด": "Highest price", "ชื่อ ก-ฮ": "Name A–Z",
   "ไม่พบรายการ ลองเปลี่ยนคำค้นหาหรือตัวกรอง": "No items found. Try a different search or filter.",
   "ยังไม่มีรายการ กดปุ่ม เพิ่ม เพื่อเริ่มจด": "No items yet. Tap Add to get started.",
+  // ปัดแถว / ปุ่มลอย / การสั่น
+  "หยุด": "Pause", "ต่อ": "Resume", "เพิ่มรายการ": "Add item",
+  "เลื่อนรายการไปทางซ้ายเพื่อหยุดพักหรือลบ": "Swipe an item left to pause or delete",
+  "การสั่นเมื่อกดปุ่ม": "Haptic feedback", "เปิดสั่น": "On", "ปิดสั่น": "Off",
   // ปฏิทิน
   "วันตัดเงินของทุกรายการในเดือนนี้": "Billing dates for every item this month", "เดือนก่อน": "Previous month", "เดือนถัดไป": "Next month",
   "รวมเดือนนี้": "Month total", "ตัดเงิน": "Charges", "วันที่หนักสุด": "Heaviest day",
@@ -153,7 +157,7 @@ const D_BTN = { "หยุดชั่วคราว": "Pause" };
 const UNIT = { "วัน": ["day", "days"], "สัปดาห์": ["week", "weeks"], "เดือน": ["month", "months"], "ปี": ["year", "years"] };
 const pl = (n, one, many) => n + " " + (+n === 1 ? one : many);
 const P = [
-  [/^สวัสดี(?: (.+))?$/, (_, n) => "Hello" + (n ? " " + n : "")],
+  [/^(อรุณสวัสดิ์|สวัสดียามบ่าย|สวัสดียามเย็น|ดึกแล้วนะ|สวัสดี)(?: (.+))?$/, (_, g, n) => ({ "อรุณสวัสดิ์": "Good morning", "สวัสดียามบ่าย": "Good afternoon", "สวัสดียามเย็น": "Good evening", "ดึกแล้วนะ": "Up late" }[g] || "Hello") + (n ? ", " + n : "")],
   [/^ตัดอีก (\d+) วัน$/, (_, n) => "Charges in " + pl(n, "day", "days")],
   [/^เริ่มหัก (.+) ถ้าไม่ยกเลิก$/, (_, p) => "Starts charging " + p + " unless cancelled"],
   [/^ถึง (.+)$/, (_, d) => "Until " + d],
