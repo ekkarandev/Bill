@@ -42,6 +42,7 @@ const IC = {
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/>',
   download: '<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',
   upload: '<path d="M12 16V5M7 9l5-5 5 5M5 20h14"/>',
+  history: '<path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5M12 7.5V12l3 2"/>',
 };
 export const svg = (n, s = 20) =>
   `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[n]}</svg>`;
@@ -58,6 +59,7 @@ export const DEF_RATE = { THB: 1, USD: 35, EUR: 38, JPY: 0.23 };
 export const UN = { d: "วัน", w: "สัปดาห์", m: "เดือน", y: "ปี" };
 export const MN = "มกราคม กุมภาพันธ์ มีนาคม เมษายน พฤษภาคม มิถุนายน กรกฎาคม สิงหาคม กันยายน ตุลาคม พฤศจิกายน ธันวาคม".split(" ");
 export const MS = "ม.ค. ก.พ. มี.ค. เม.ย. พ.ค. มิ.ย. ก.ค. ส.ค. ก.ย. ต.ค. พ.ย. ธ.ค.".split(" ");
+export const WDN = "อาทิตย์ จันทร์ อังคาร พุธ พฤหัสบดี ศุกร์ เสาร์".split(" ");
 export const COL = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#8b5cf6"];
 export const PCOL = ["#1e1b6b", "#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#8b5cf6", "#14b8a6", "#f97316", "#64748b"];
 export const EMO = "🎞️ 🎵 🎮 💼 ☁️ 💚 📙 📰 📦 🛒 🚗 🏠 ✈️ 🍔 📱 💡".split(" ");
@@ -80,6 +82,7 @@ export const S = {
   user: null, subs: [], accts: [], cats: defaultCats(),
   rem: [3, 1, 0], cur: "THB", theme: "system",
   rates: { USD: DEF_RATE.USD, EUR: DEF_RATE.EUR, JPY: DEF_RATE.JPY },
+  autoRate: true, ratesAt: 0, lang: "th",
 };
 export const nav = { go: () => {}, openForm: () => {}, signOut: () => {} };
 export const rate = c => (c === "THB" ? 1 : (S.rates && S.rates[c]) || DEF_RATE[c] || 1);
@@ -107,17 +110,23 @@ export function nth(s, f, n) {
   t.setDate(Math.min(f.getDate(), new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate()));
   return t;
 }
-// วันตัดเงินทั้งหมดของรายการ s ระหว่าง a ถึง b (รายการที่หยุดชั่วคราวไม่ถูกนับ)
+// วันตัดเงินทั้งหมดของรายการ s ระหว่าง a ถึง b
+// - รายการที่หยุดชั่วคราวจะนับเฉพาะวันก่อนวันที่หยุด (pausedAt) เพื่อให้ประวัติเก่าไม่หาย
+// - วันที่อยู่ใน s.skip (ผู้ใช้ลบออกจากประวัติ) จะไม่ถูกนับ
 export function occ(s, a, b) {
-  if (s.paused) return [];
-  const f = prs(s.first), e = s.end ? prs(s.end) : null, o = [];
+  let cut = null;
+  if (s.paused) { if (!s.pausedAt) return []; cut = prs(s.pausedAt); }
+  const f = prs(s.first), e = s.end ? prs(s.end) : null, o = [], sk = s.skip || [];
   for (let n = 0; n < 5000; n++) {
     const d = nth(s, f, n);
-    if (d > b || (e && d > e)) break;
-    if (d >= a) o.push(d);
+    if (d > b || (e && d > e) || (cut && d >= cut)) break;
+    if (d >= a && !sk.includes(iso(d))) o.push(d);
   }
   return o;
 }
+const ALL = new Date(2000, 0, 1);
+// ครั้งที่ตัดเงินไปแล้ว (ก่อนวันนี้)
+export const past = s => occ(s, ALL, addD(TD, -1));
 export const nxt = s => occ(s, TD, new Date(TD.getFullYear() + 2, TD.getMonth(), TD.getDate()))[0];
 
 // ยอดที่ "เราจ่าย" ในรอบวันที่ d เป็นบาท (หักส่วนของคนที่หารด้วยออก)
@@ -168,7 +177,27 @@ export function fail(e) {
   toast(c === "permission-denied" ? "บันทึกไม่ได้ ตรวจสอบ Firestore rules (ดู README ข้อ 5)" : "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
 }
 export const persist = () =>
-  B.saveSettings({ cats: S.cats, accts: S.accts, rem: S.rem, cur: S.cur, theme: S.theme, rates: S.rates }).catch(fail);
+  B.saveSettings({ cats: S.cats, accts: S.accts, rem: S.rem, cur: S.cur, theme: S.theme, rates: S.rates, autoRate: S.autoRate, ratesAt: S.ratesAt, lang: S.lang }).catch(fail);
+
+// ดึงอัตราแลกเปลี่ยนสด (ฟรี ไม่ต้องมีคีย์) ถ้าดึงไม่ได้จะใช้เรทเดิมต่อ
+const RATE_SRC = [
+  "https://open.er-api.com/v6/latest/THB",
+  "https://api.frankfurter.dev/v1/latest?base=THB&symbols=USD,EUR,JPY",
+];
+export async function syncRates(force) {
+  if (!force && (!S.autoRate || Date.now() - (S.ratesAt || 0) < 6 * 36e5)) return false;
+  for (const u of RATE_SRC) {
+    try {
+      const r = await fetch(u);
+      if (!r.ok) continue;
+      const m = (await r.json()).rates || {}, n = {};
+      for (const c of ["USD", "EUR", "JPY"]) { if (!(m[c] > 0)) throw new Error("rate"); n[c] = +(1 / m[c]).toPrecision(5); }
+      S.rates = n; S.ratesAt = Date.now(); persist();
+      return true;
+    } catch (e) { /* ลองแหล่งถัดไป */ }
+  }
+  return false;
+}
 export const saveSub = s => B.saveSub(s).catch(fail);
 export const removeSub = id => B.removeSub(id).catch(fail);
 export const batchOps = ops => B.batch(ops).catch(fail);

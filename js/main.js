@@ -1,14 +1,15 @@
 // จุดเริ่มต้นของแอป: ตรวจการล็อกอิน → ฟังข้อมูลจาก Firestore → แสดงหน้าจอ
 import * as B from "./backend.js";
-import { $, h, ico, S, nav, DEF_RATE, defaultCats, refreshToday, applyTheme, initUi } from "./core.js";
+import { $, h, ico, S, nav, DEF_RATE, defaultCats, refreshToday, applyTheme, initUi, syncRates } from "./core.js";
 import { initForm, openForm } from "./form.js";
+import { initLang, setLang } from "./i18n.js";
 import {
-  renderHome, renderList, renderCal, renderSettings, resetSettingsPage, avatarOf, LOGO,
+  renderHome, renderList, renderCal, renderHistory, renderSettings, resetSettingsPage, avatarOf, LOGO,
   renderLogin, loginError, renderSetup, renderError, renderSplash, showApp,
 } from "./views.js";
 
-const VIEWS = { home: renderHome, list: renderList, cal: renderCal, set: renderSettings };
-const NAV = [["home", "home", "ภาพรวม"], ["list", "list", "รายการ"], ["cal", "calendar", "ปฏิทิน"], ["set", "settings", "ตั้งค่า"]];
+const VIEWS = { home: renderHome, list: renderList, cal: renderCal, his: renderHistory, set: renderSettings };
+const NAV = [["home", "home", "ภาพรวม"], ["list", "list", "รายการ"], ["cal", "calendar", "ปฏิทิน"], ["his", "history", "ประวัติ"], ["set", "settings", "ตั้งค่า"]];
 let cur = "home", unsub = null, ready = false, formOpen = false, activeUid = null;
 
 /* ───── เมนู ───── */
@@ -37,7 +38,7 @@ function updateNavUser() {
 function show(v) {
   cur = v;
   if (v !== "add") formOpen = false;
-  ["home", "list", "cal", "set", "add"].forEach(k => { $("v-" + k).hidden = k !== v; });
+  ["home", "list", "cal", "his", "set", "add"].forEach(k => { $("v-" + k).hidden = k !== v; });
   document.querySelectorAll(".nav-b").forEach(b => b.setAttribute("aria-current", b.dataset.v === (v === "add" ? "list" : v)));
   if (v !== "set") resetSettingsPage();
   if (VIEWS[v]) VIEWS[v]();
@@ -97,7 +98,7 @@ function start(u) {
   };
   unsub = B.listen(u.uid, d => {
     if (!d) { // ผู้ใช้ใหม่: สร้างค่าเริ่มต้น แล้วรอ snapshot รอบถัดไป
-      B.saveSettings({ cats: defaultCats(), accts: [], rem: [3, 1, 0], cur: "THB", theme: S.theme, rates: { USD: DEF_RATE.USD, EUR: DEF_RATE.EUR, JPY: DEF_RATE.JPY }, createdAt: Date.now() }).catch(onErr);
+      B.saveSettings({ cats: defaultCats(), accts: [], rem: [3, 1, 0], cur: "THB", theme: S.theme, lang: S.lang, autoRate: true, rates: { USD: DEF_RATE.USD, EUR: DEF_RATE.EUR, JPY: DEF_RATE.JPY }, createdAt: Date.now() }).catch(onErr);
       return;
     }
     S.cats = Array.isArray(d.cats) && d.cats.length ? d.cats : defaultCats();
@@ -105,6 +106,8 @@ function start(u) {
     S.rem = Array.isArray(d.rem) ? d.rem : [3, 1, 0];
     S.cur = d.cur || "THB";
     S.rates = { USD: DEF_RATE.USD, EUR: DEF_RATE.EUR, JPY: DEF_RATE.JPY, ...(d.rates || {}) };
+    S.autoRate = d.autoRate !== false; S.ratesAt = d.ratesAt || 0;
+    if (d.lang && d.lang !== S.lang) setLang(d.lang);
     if (d.theme && d.theme !== S.theme) { S.theme = d.theme; applyTheme(); }
     gotUser = true; check();
   }, list => { S.subs = list; gotSubs = true; check(); }, onErr);
@@ -113,6 +116,7 @@ function enter() {
   showApp();
   updateNavUser();
   show(viewFromHash());
+  syncRates().then(ok => { if (ok) refresh(); });
 }
 function stop() {
   if (unsub) { unsub(); unsub = null; }
@@ -133,6 +137,8 @@ async function signOut() {
 async function boot() {
   try { S.theme = localStorage.getItem("jb-theme") || "system"; } catch (e) { /* ignore */ }
   applyTheme(false);
+  initLang();
+  window.addEventListener("langchange", () => { buildNav(); if (ready) { updateNavUser(); show(cur); } });
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (S.theme === "system") applyTheme(false); });
   initUi(); initForm(); buildNav();
   nav.go = go;

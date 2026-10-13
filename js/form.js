@@ -241,6 +241,8 @@ function save() {
     rem: !g("tRem") ? -1 : remCustom ? remSel.slice() : null,
     note: g("tNote") ? $("note").value.trim() : "",
     paused: editing ? !!editing.paused : false,
+    pausedAt: editing ? editing.pausedAt || "" : "",
+    skip: editing ? editing.skip || [] : [],
     createdAt: editing && editing.createdAt ? editing.createdAt : Date.now(),
   };
   saveSub(sub);

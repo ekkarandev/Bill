@@ -1,11 +1,12 @@
 // หน้าจอทั้งหมดของแอป
 import {
-  $, h, ico, svg, S, nav, SYM, MN, COL, DEF_RATE, EMO,
+  $, h, ico, svg, S, nav, SYM, MN, MS, COL, DEF_RATE, EMO, WDN, rate, past, syncRates,
   TD, iso, prs, addD, daysTo, dstr, fdate, dayTxt, occ, nxt, thb, mon, cyl, remList, remOf, remTxt,
   money, price, subtxt, bdg, acc, payTxt, catOf,
   toast, persist, saveSub, removeSub, batchOps, newId, applyTheme, sheet, closeSheet, ask, fld, remChips,
 } from "./core.js";
 import { newAcct } from "./form.js";
+import { setLang } from "./i18n.js";
 
 /* ───────── ชิ้นส่วนที่ใช้ซ้ำ ───────── */
 export function logo(s) {
@@ -45,6 +46,13 @@ const btn = (cls, text, fn, icon) => {
 };
 
 /* ───────── รายละเอียดรายการ ───────── */
+// หยุดชั่วคราว: จำวันที่หยุดไว้ ประวัติก่อนหน้านั้นยังอยู่ / เปิดใช้ต่อ: ช่วงที่หยุดไม่นับว่าจ่าย
+function togglePause(s) {
+  if (s.paused) {
+    const gap = s.pausedAt ? occ({ ...s, paused: false, pausedAt: "" }, prs(s.pausedAt), addD(TD, -1)).map(iso) : [];
+    saveSub({ ...s, paused: false, pausedAt: "", skip: [...(s.skip || []), ...gap] });
+  } else saveSub({ ...s, paused: true, pausedAt: iso(TD) });
+}
 export function showDetail(s) {
   const nd = nxt(s), c = catOf(s.cat), a = acc(s.pay), live = { ...s, paused: false };
   const rows = [];
@@ -53,6 +61,8 @@ export function showDetail(s) {
   add("ยอดต่อรอบ", price(s) + " / " + cyl(s) + (s.cur !== S.cur ? " ≈ " + money(thb(s)) : ""));
   add("เฉลี่ยต่อเดือน", money(mon(live)));
   add("ต่อปี", money(mon(live) * 12));
+  const pd = past(s);
+  add("จ่ายไปแล้ว", pd.length ? pd.length + " ครั้ง · " + money(pd.reduce((x, d) => x + thb(s, d), 0)) : "");
   add("หมวดหมู่", c.e + " " + c.n);
   add("ช่องทางหักเงิน", a ? payTxt(a) : "");
   add("ช่วงทดลองใช้ฟรี", s.trial ? "ถึง " + fdate(s.trial) : "");
@@ -63,18 +73,36 @@ export function showDetail(s) {
   const top = h("div", "dt-top", null, [logo(s), h("div", null, null, [h("div", "nm", s.name), h("div", "sb", subtxt(s))])]);
   const act = h("div", "dt-act", null, [
     btn("btn", "แก้ไข", () => { closeSheet(); nav.openForm(s); }, "edit"),
-    btn("btn ghost", s.paused ? "เปิดใช้ต่อ" : "หยุดชั่วคราว", () => { closeSheet(); saveSub({ ...s, paused: !s.paused }); toast(s.paused ? "เปิดใช้ " + s.name + " ต่อแล้ว" : "หยุด " + s.name + " ชั่วคราวแล้ว"); }, s.paused ? "play" : "pause"),
+    btn("btn ghost", s.paused ? "เปิดใช้ต่อ" : "หยุดชั่วคราว", () => { closeSheet(); togglePause(s); toast(s.paused ? "เปิดใช้ " + s.name + " ต่อแล้ว" : "หยุด " + s.name + " ชั่วคราวแล้ว"); }, s.paused ? "play" : "pause"),
     btn("btn ghost danger-t", "ลบรายการ", () => ask("ลบ " + s.name + "?", "รายการนี้จะถูกลบถาวร", "ลบรายการ", () => { removeSub(s.id); toast("ลบ " + s.name + " แล้ว"); }), "trash"),
   ]);
   sheet("รายละเอียดรายการ", h("div", null, null, [top, h("dl", "facts", null, rows), act]));
 }
 
 /* ───────── ภาพรวม ───────── */
+// การ์ดวันที่ตัวใหญ่ บนสุดของหน้าภาพรวม พร้อมทางลัดไปประวัติ
+function heroCard() {
+  const A = new Date(TD.getFullYear(), TD.getMonth(), 1);
+  const paid = S.subs.reduce((x, s) => x + occ(s, A, addD(TD, -1)).reduce((y, d) => y + thb(s, d), 0), 0);
+  const nx = S.subs.filter(s => !s.paused && nxt(s)).map(s => [s, nxt(s)]).sort((p, q) => p[1] - q[1])[0];
+  const kids = [h("div", "hero-top", null, [
+    h("div", "hero-d", null, [h("b", null, TD.getDate())]),
+    h("div", "hero-t", null, [h("span", null, WDN[TD.getDay()]), h("strong", null, MN[TD.getMonth()] + " " + TD.getFullYear())]),
+  ])];
+  if (S.subs.length) {
+    const hb = h("button", "hero-b", null, [h("small", null, "จ่ายแล้วเดือนนี้"), h("b", null, money(paid)), ico("chevR", 16)]);
+    hb.type = "button"; hb.onclick = () => nav.go("his");
+    kids.push(h("div", "hero-row", null, [
+      nx ? h("div", null, null, [h("small", null, "ตัดเงินถัดไป"), h("b", null, nx[0].name + " · " + dayTxt(daysTo(nx[1])))]) : null, hb,
+    ]));
+  }
+  return h("section", "hero", null, kids);
+}
 export function renderHome() {
   const v = $("v-home");
   v.textContent = "";
   const first = ((S.user && S.user.name) || "").split(" ")[0];
-  v.append(head("ภาพรวม", "สวัสดี" + (first ? " " + first : ""), addBtn()));
+  v.append(head("ภาพรวม", "สวัสดี" + (first ? " " + first : ""), addBtn()), heroCard());
   if (!S.subs.length) {
     v.append(h("div", "card empty-card", null, [
       h("div", "empty-ic", null, [ico("calendar", 34)]),
@@ -262,6 +290,109 @@ export function renderCal() {
   v.append(c);
 }
 
+/* ───────── ประวัติการจ่าย + กราฟสรุป ───────── */
+let hv = "list", hn = 3, hY = TD.getFullYear(), hM = TD.getMonth();
+const DC = ["#6c5ce7", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#8b5cf6", "#14b8a6", "#f97316", "#64748b"];
+const short = x => { const n = x / rate(S.cur); return SYM[S.cur] + (n >= 1e4 ? Math.round(n / 1e3) + "k" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : Math.round(n)); };
+const monthSum = (y, m) => { const a = new Date(y, m, 1), b = new Date(y, m + 1, 0); return S.subs.reduce((x, s) => x + occ(s, a, b).reduce((z, d) => z + thb(s, d), 0), 0); };
+
+function histRow(d, s) {
+  const del = h("button", "x", null, [ico("trash", 18)]);
+  del.type = "button"; del.setAttribute("aria-label", "ลบรายการนี้ออกจากประวัติ");
+  del.onclick = e => {
+    e.stopPropagation();
+    ask("ลบรายการที่จ่ายแล้ว?", s.name + " วันที่ " + fdate(iso(d)) + " จะถูกลบออกจากประวัติและยอดรวมของเดือนนั้น ตัวรายการยังอยู่ตามเดิม", "ลบ", () => {
+      saveSub({ ...s, skip: [...(s.skip || []), iso(d)] });
+      toast("ลบออกจากประวัติแล้ว");
+    });
+  };
+  const r = h("div", "row hrow", null, [
+    h("div", "dbox", null, [h("b", null, d.getDate()), h("small", null, MS[d.getMonth()])]),
+    h("div", "rt", null, [h("div", "nm", s.name), h("div", "sb", subtxt(s))]), h("div", "am", money(thb(s, d))), del,
+  ]);
+  r.onclick = () => showDetail(s);
+  return r;
+}
+function histList(v) {
+  const L = [];
+  S.subs.forEach(s => past(s).forEach(d => L.push([d, s])));
+  L.sort((p, q) => q[0] - p[0] || p[1].name.localeCompare(q[1].name));
+  if (!L.length) {
+    v.append(h("div", "card empty-card", null, [h("div", "empty-ic", null, [ico("history", 34)]), h("h2", null, "ยังไม่มีประวัติการจ่าย"),
+      h("p", "mut", "เมื่อรายการผ่านวันตัดเงินไปแล้ว จะมาอยู่ที่นี่อัตโนมัติ ดูย้อนหลังได้ และลบออกได้ถ้าไม่ได้ตัดจริง")]));
+    return;
+  }
+  v.append(h("div", "sum", null, [
+    h("div", "s1", null, [h("small", null, "จ่ายไปแล้วรวม"), h("b", null, money(L.reduce((x, e) => x + thb(e[1], e[0]), 0)))]),
+    h("div", "s2", null, [h("small", null, "ตัดเงิน"), h("b", null, L.length + " ครั้ง")]),
+    h("div", "s3", null, [h("small", null, "ล่าสุด"), h("b", null, dstr(L[0][0]))]),
+  ]));
+  const G = new Map();
+  L.forEach(e => { const k = e[0].getFullYear() * 12 + e[0].getMonth(); if (!G.has(k)) G.set(k, []); G.get(k).push(e); });
+  const keys = [...G.keys()];
+  keys.slice(0, hn).forEach(k => {
+    const g = G.get(k), c = h("div", "card list-card");
+    v.append(h("div", "mh", null, [h("h2", null, MN[k % 12] + " " + Math.floor(k / 12)), h("span", null, money(g.reduce((x, e) => x + thb(e[1], e[0]), 0)) + " · " + g.length + " ครั้ง")]));
+    g.forEach(e => c.append(histRow(e[0], e[1])));
+    v.append(c);
+  });
+  if (keys.length > hn) v.append(btn("btn ghost", "ดูเดือนก่อนหน้า", () => { hn += 3; renderHistory(); }));
+}
+function histCharts(v) {
+  const pv = h("button", null, null, [ico("chevL", 22)]), nx = h("button", null, null, [ico("chevR", 22)]);
+  pv.type = nx.type = "button";
+  pv.setAttribute("aria-label", "เดือนก่อน"); nx.setAttribute("aria-label", "เดือนถัดไป");
+  pv.onclick = () => { if (--hM < 0) { hM = 11; hY--; } renderHistory(); };
+  nx.onclick = () => { if (++hM > 11) { hM = 0; hY++; } renderHistory(); };
+  v.append(h("div", "mn", null, [pv, h("b", null, MN[hM] + " " + hY), nx]));
+
+  const a = new Date(hY, hM, 1), b = new Date(hY, hM + 1, 0), by = {};
+  S.subs.forEach(s => { const x = occ(s, a, b).reduce((z, d) => z + thb(s, d), 0), k = s.cat || "อื่นๆ"; if (x) by[k] = (by[k] || 0) + x; });
+  const rows = Object.entries(by).sort((p, q) => q[1] - p[1]), tot = rows.reduce((x, r) => x + r[1], 0);
+  const c1 = h("section", "card", null, [h("h2", "ct", "ค่าใช้จ่ายตามหมวด")]);
+  if (!tot) c1.append(h("p", "empty", "เดือนนี้ยังไม่มีรายการตัดเงิน"));
+  else {
+    let acc = 0;
+    const segs = rows.map(([, x], i) => { const p = x / tot * 100, o = 25 - acc; acc += p; return `<circle r="15.9155" cx="21" cy="21" fill="none" stroke="${DC[i % DC.length]}" stroke-width="6" stroke-dasharray="${p} ${100 - p}" stroke-dashoffset="${o}"/>`; }).join("");
+    const dn = h("div");
+    dn.innerHTML = `<svg class="donut" viewBox="0 0 42 42" aria-hidden="true"><circle r="15.9155" cx="21" cy="21" fill="none" stroke="var(--fld)" stroke-width="6"/>${segs}<text x="21" y="23" text-anchor="middle">${short(tot)}</text></svg>`;
+    const lg = h("div", "legend");
+    rows.forEach(([k, x], i) => {
+      const dot = h("i"); dot.style.background = DC[i % DC.length];
+      lg.append(h("div", "lgd", null, [dot, h("span", null, catOf(k).e + " " + k), h("b", null, money(x)), h("small", "mut", Math.round(x / tot * 100) + "%")]));
+    });
+    c1.append(h("div", "donut-w", null, [dn, lg]));
+  }
+  v.append(c1);
+
+  const N = 6, T = [];
+  for (let i = N - 1; i >= 0; i--) { const m = new Date(hY, hM - i, 1); T.push([m, monthSum(m.getFullYear(), m.getMonth())]); }
+  const mx = Math.max(...T.map(t => t[1]), 1), W = 320, bw = 36, gp = (W - N * bw) / (N + 1);
+  const bars = T.map(([m, t], i) => {
+    const bh = Math.max(3, t / mx * 110), x = gp + i * (bw + gp), y = 130 - bh;
+    return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="8" class="${i === N - 1 ? "on" : ""}"/><text class="v" x="${x + bw / 2}" y="${y - 6}" text-anchor="middle">${t ? short(t) : ""}</text><text x="${x + bw / 2}" y="150" text-anchor="middle">${MS[m.getMonth()]}</text>`;
+  }).join("");
+  const c2 = h("section", "card", null, [h("h2", "ct", "ยอดจ่ายรายเดือน 6 เดือนล่าสุด")]), bw2 = h("div");
+  bw2.innerHTML = `<svg class="bars" viewBox="0 0 ${W} 158" aria-hidden="true">${bars}</svg>`;
+  c2.append(bw2, h("p", "fine", "นับรวมรายการที่ยังไม่ถึงวันตัดของเดือนนั้นด้วย"));
+  v.append(c2);
+}
+export function renderHistory() {
+  const v = $("v-his");
+  v.textContent = "";
+  v.append(head("ประวัติ", "รายการที่ตัดเงินไปแล้ว", null));
+  const seg = h("div", "seg");
+  seg.style.marginBottom = "14px";
+  [["list", "ประวัติการจ่าย"], ["chart", "กราฟสรุป"]].forEach(([k, t]) => {
+    const b = h("button", null, t);
+    b.type = "button"; b.setAttribute("aria-pressed", hv === k);
+    b.onclick = () => { hv = k; renderHistory(); };
+    seg.append(b);
+  });
+  v.append(seg);
+  (hv === "list" ? histList : histCharts)(v);
+}
+
 /* ───────── ตั้งค่า ───────── */
 let sp = "", sorting = false;
 export const resetSettingsPage = () => { sp = ""; };
@@ -315,7 +446,8 @@ function normSub(s) {
     first: s.first, start: s.start || s.first, cat: s.cat || "อื่นๆ", pay: s.pay || "", trial: s.trial || "",
     ppl: Array.isArray(s.ppl) ? s.ppl.map(p => ({ name: String(p.name || "").slice(0, 20), amt: +p.amt || 0, until: p.until || "" })) : [],
     end: s.end || "", endN: +s.endN || 0, rem: s.rem === -1 || Array.isArray(s.rem) ? s.rem : null,
-    note: String(s.note || "").slice(0, 200), paused: !!s.paused, createdAt: Date.now(),
+    note: String(s.note || "").slice(0, 200), paused: !!s.paused, pausedAt: s.paused && /^\d{4}-\d\d-\d\d$/.test(s.pausedAt || "") ? s.pausedAt : "",
+    skip: Array.isArray(s.skip) ? s.skip.filter(x => /^\d{4}-\d\d-\d\d$/.test(x)).slice(0, 1000) : [], createdAt: Date.now(),
   };
 }
 function importText(txt) {
@@ -346,16 +478,31 @@ const SP = {
       cards.append(b);
     });
     Object.keys(SYM).forEach(c => cur.append(new Option(c, c)));
+    const lang = h("div", "seg tsg"), rtSeg = h("div", "seg tsg"), rtInfo = h("p", "fine");
+    [["th", "ไทย"], ["en", "English"]].forEach(([k, t]) => {
+      const b = h("button", null, t);
+      b.type = "button"; b.setAttribute("aria-pressed", S.lang === k);
+      b.onclick = () => { setLang(k); persist(); renderSettings(); };
+      lang.append(b);
+    });
+    [[true, "อัตโนมัติ"], [false, "ตั้งเอง"]].forEach(([k, t]) => {
+      const b = h("button", null, t);
+      b.type = "button"; b.setAttribute("aria-pressed", S.autoRate === k);
+      b.onclick = () => { S.autoRate = k; persist(); if (k) syncRates(true).then(() => renderSettings()); renderSettings(); };
+      rtSeg.append(b);
+    });
+    rtInfo.textContent = !S.autoRate ? "ใช้เรทที่ตั้งเอง ด้านล่างแก้ไขได้" : S.ratesAt ? "อัปเดตล่าสุด " + new Date(S.ratesAt).toLocaleString(S.lang === "en" ? "en-GB" : "th-TH-u-ca-gregory", { dateStyle: "medium", timeStyle: "short" }) : "ยังไม่ได้ดึงเรท ใช้ค่าเริ่มต้นไปก่อน";
+    if (S.autoRate) rtInfo.append(" ", btn("lnk", "อัปเดตตอนนี้", () => syncRates(true).then(ok => { toast(ok ? "อัปเดตเรทแล้ว" : "ดึงเรทไม่สำเร็จ ใช้เรทเดิมต่อไป"); renderSettings(); })));
     cur.value = S.cur; cur.onchange = () => { S.cur = cur.value; persist(); };
     ["USD", "EUR", "JPY"].forEach(c => {
-      const i = h("input"); i.type = "number"; i.min = 0; i.step = "any"; i.value = S.rates[c] ?? DEF_RATE[c];
+      const i = h("input"); i.type = "number"; i.min = 0; i.step = "any"; i.value = S.rates[c] ?? DEF_RATE[c]; i.disabled = S.autoRate;
       i.onchange = () => { const x = parseFloat(i.value); if (x > 0) { S.rates = { ...S.rates, [c]: x }; persist(); } else i.value = S.rates[c]; };
       rt.append(fld("1 " + c + " = (บาท)", i));
     });
-    v.append(card("ทั่วไป", "ธีม และสกุลเงินที่ใช้สรุปยอด", [
-      h("label", null, "ธีม"), cards,
+    v.append(card("ทั่วไป", "ธีม ภาษา และสกุลเงินที่ใช้สรุปยอด", [
+      h("label", null, "ธีม"), cards, h("label", null, "ภาษา"), lang,
       fld("สกุลเงินหลัก (ยอดรวมทุกหน้าจะแปลงเป็นสกุลนี้)", cur),
-      h("label", null, "อัตราแลกเปลี่ยน"), h("p", "fine", "แอปไม่ดึงเรทสดให้ ตั้งค่าเองได้ตามที่ใช้จริง"), rt,
+      h("label", null, "อัตราแลกเปลี่ยน"), rtSeg, rtInfo, rt,
       h("label", null, "โซนเวลา"), h("p", "mut", Intl.DateTimeFormat().resolvedOptions().timeZone),
     ]));
   },
@@ -444,7 +591,7 @@ export function renderSettings() {
   if (!sp) {
     const u = S.user || {};
     const c = h("div", "card");
-    [["gen", "settings", "ทั่วไป", "ธีม สกุลเงิน และอัตราแลกเปลี่ยน"], ["cat", "tag", "หมวดหมู่", "เพิ่ม แก้ชื่อ เปลี่ยนไอคอนได้ตามใจ"], ["pay", "card", "ช่องทางหักเงิน", "บัตรและกระเป๋าเงินที่ใช้จ่าย"],
+    [["gen", "settings", "ทั่วไป", "ธีม ภาษา สกุลเงิน และอัตราแลกเปลี่ยน"], ["cat", "tag", "หมวดหมู่", "เพิ่ม แก้ชื่อ เปลี่ยนไอคอนได้ตามใจ"], ["pay", "card", "ช่องทางหักเงิน", "บัตรและกระเป๋าเงินที่ใช้จ่าย"],
       ["ntf", "bell", "การแจ้งเตือน", "ตั้งครั้งเดียว ใช้กับทุกรายการ"], ["dat", "db", "ข้อมูล", "สำรอง นำเข้า และย้ายข้อมูล"], ["acc", "user", "บัญชี", "บัญชี Google และการออกจากระบบ"]].forEach(m => {
       const k = h("button", "pick", null, [h("span", "pi", null, [ico(m[1], 20)]), h("span", "pt", null, [h("b", null, m[2]), h("small", null, m[3])]), h("span", "mut", null, [ico("chevR", 18)])]);
       k.type = "button"; k.onclick = () => { sp = m[0]; renderSettings(); }; c.append(k);
@@ -472,7 +619,7 @@ export function renderSplash() {
   show(`<div class="splash"><div class="splash-in">${LOGO}<div class="sk"></div></div></div>`);
 }
 export function renderLogin(onSign) {
-  show(`<main class="login"><div class="lg-wrap">
+  show(`<main class="login"><button class="lang-b" id="lgLang" type="button">${S.lang === "th" ? "English" : "ไทย"}</button><div class="lg-wrap">
     <section class="lg-copy">
       <div class="brand">${LOGO}<b>จดบิล</b></div>
       <h1>จดค่า Subscription ให้ไม่หลุดสักรายการ</h1>
@@ -501,6 +648,7 @@ export function renderLogin(onSign) {
     </section>
   </div></main>`);
   $("gsign").onclick = onSign;
+  $("lgLang").onclick = () => { setLang(S.lang === "th" ? "en" : "th"); $("lgLang").textContent = S.lang === "th" ? "English" : "ไทย"; };
   if (/Line\/|FBAN|FBAV|Instagram/i.test(navigator.userAgent)) loginError("Google ไม่อนุญาตให้ล็อกอินในเบราว์เซอร์ของแอปแชต เปิดลิงก์นี้ใน Chrome หรือ Safari แทน");
 }
 export function loginError(msg) { const e = $("lgerr"); if (e) e.textContent = msg; }
