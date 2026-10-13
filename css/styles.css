@@ -393,3 +393,35 @@ details summary { cursor: pointer; color: var(--mut); padding-top: 14px; border-
 /* ───── ปุ่มสลับภาษาหน้าเข้าสู่ระบบ ───── */
 .login { position: relative; }
 .lang-b { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); right: 16px; z-index: 2; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 8px 16px; font-weight: 700; box-shadow: var(--sh); }
+
+/* ───── โครงหน้าจอระหว่างโหลด (skeleton) ───── */
+.skel-app { display: none; }
+html.seen .skel-app, .skel-app.on { display: block; }
+html.seen .splash { display: none; }
+.skel-in { max-width: 540px; margin: 0 auto; padding: calc(22px + env(safe-area-inset-top, 0px)) 20px 0; display: grid; gap: 14px; }
+.sk-b { border-radius: 20px; background: linear-gradient(90deg, var(--line), var(--g2), var(--line)); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+.sk-t { height: 44px; width: 55%; }
+.sk-hero { height: 150px; border-radius: 28px; }
+.sk-g { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sk-c { height: 96px; border-radius: 24px; }
+.sk-r { height: 64px; }
+@media (min-width: 980px) { .skel-in { padding-top: 40px; } }
+
+/* ───── ปัดแถวเพื่อหยุด/ลบ ───── */
+.sw-wrap { position: relative; overflow: hidden; border-bottom: 1px solid var(--line); }
+.sw-wrap:last-of-type { border-bottom: 0; }
+.sw-wrap .row { background: var(--surface); position: relative; touch-action: pan-y; user-select: none; -webkit-user-select: none; border-bottom: 0; }
+.sw-acts { position: absolute; top: 0; right: 0; bottom: 0; display: flex; }
+.sa { width: 72px; border: 0; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; font-weight: 700; border-radius: 0; }
+.sa.pa { background: #f59e0b; }
+.sa.de { background: var(--bad); }
+.sw-hint { text-align: center; margin: 8px 0 4px; }
+
+/* ───── ปุ่มเพิ่มลอย (มือถือ) ───── */
+.fab { position: fixed; right: 18px; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); z-index: 6; width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--brand); color: #fff; display: grid; place-items: center; box-shadow: 0 14px 28px -8px rgba(76, 58, 200, .6); }
+:root[data-theme="dark"] .fab { background: #5b4bd6; }
+@media (max-width: 979px) { .hd .dk { display: none; } }
+@media (min-width: 980px) { .fab { display: none; } }
+/* แถวที่หยุดชั่วคราว: จางเฉพาะเนื้อหา ไม่ให้ปุ่มปัดด้านหลังโผล่ทะลุ */
+.sw-wrap .row.off { opacity: 1; }
+.sw-wrap .row.off > * { opacity: .55; }
