@@ -7,14 +7,30 @@ import {
 const opt = (ic, bg, id, title) =>
   `<div class="or"><span class="oi" style="background:${bg}">${svg(ic, 22)}</span><span class="ot"><label for="${id}">${title}</label><small class="os" id="s${id.slice(1)}" hidden></small></span><input type="checkbox" class="tg" id="${id}"></div>`;
 
+// การ์ดตัวอย่างด้านขวา (เฉพาะจอกว้าง): เห็นผลทันทีที่กรอก พร้อมปุ่มยกเลิก/เพิ่ม
+const PREV = `<aside class="prevc" aria-label="ตัวอย่าง"><div class="st">ตัวอย่าง</div>
+  <div class="card pv">
+    <div class="pv-h"><div class="lg" id="pvLg"></div><b id="pvNm">ชื่อบริการ</b></div>
+    <div class="pv-p"><b id="pvPr">฿0.00</b><span id="pvCy">ทุกเดือน</span></div>
+    <div class="pv-l">
+      <div><span>ตัดครั้งแรก</span><b id="pvF"></b></div>
+      <div><span>หมวดหมู่</span><b id="pvC"></b></div>
+      <div><span>จ่ายด้วย</span><b id="pvP"></b></div>
+      <div><span>แจ้งเตือน</span><b id="pvR"></b></div>
+    </div>
+    <div class="sbtn"><button type="button" id="pvNo">ยกเลิก</button><button type="button" class="dk" id="pvOk">เพิ่มรายการ</button></div>
+  </div></aside>`;
+
 const TPL = `
 <div class="ah"><button id="back" type="button" class="icb" aria-label="กลับ">${svg("chevL", 24)}</button><h1 id="fTitle">เพิ่มรายการใหม่</h1><button class="dk" id="save" type="button">เพิ่ม</button></div>
-<div class="card" style="margin-top:16px">
+<div class="fgrid"><div class="fcol"><div class="st" style="margin-top:16px">บริการ</div>
+<div class="card">
   <label for="nm" style="margin-top:0">ชื่อบริการ</label>
   <div class="nr"><label class="lgb" id="lgb" title="เพิ่มโลโก้"><input type="file" accept="image/*" id="lgf"><span id="lgp">${svg("upload", 22)}</span></label><input id="nm" placeholder="เช่น Netflix, Spotify" maxlength="40" autocomplete="off"></div>
   <details open><summary>รายละเอียดบริการ</summary>
     <label for="pl">แพลน (ไม่บังคับ)</label><input id="pl" placeholder="เช่น Premium" maxlength="40">
-    <label for="ws">เว็บไซต์ (ไม่บังคับ)</label><input id="ws" placeholder="เช่น netflix.com" maxlength="80">
+    <label for="ws">เว็บไซต์ (ใช้ดึงโลโก้)</label><input id="ws" placeholder="เช่น netflix.com" maxlength="80" autocapitalize="off" autocorrect="off">
+    <p class="fine" id="wsS" style="margin:6px 0 0">พิมพ์โดเมน เช่น netflix.com แล้วแอปจะลองดึงโลโก้ให้</p>
     <label>สีประจำรายการ (ใช้เมื่อไม่มีโลโก้)</label><div class="sw" id="sw"></div>
   </details>
 </div>
@@ -45,9 +61,9 @@ const TPL = `
     <div class="ob" id="bRem"><button type="button" class="lnk" id="remAdj" style="padding:0">ปรับวันเตือน</button><div id="remC" hidden style="margin-top:10px"></div></div></div>
   <div class="opt">${opt("note", "#f97316", "tNote", "โน้ต")}
     <div class="ob" id="bNote" hidden><textarea id="note" rows="3" maxlength="200" placeholder="เช่น แชร์กับเพื่อน 4 คน" aria-label="โน้ต"></textarea></div></div>
-</div>`;
+</div></div>${PREV}</div>`;
 
-let cyc = "m", col = COL[0], lg = "", curCat = "อื่นๆ", curPay = "", endM = "n", trialN = 7;
+let lgAuto = true, cyc = "m", col = COL[0], lg = "", curCat = "อื่นๆ", curPay = "", endM = "n", trialN = 7;
 let remSel = [], remCustom = false, P = [], editing = null;
 
 const hint = () => {
@@ -72,6 +88,22 @@ function endInfo() {
   return n ? { n, last } : null;
 }
 
+// อัปเดตการ์ดตัวอย่าง
+function prev() {
+  if (!$("pvNm")) return;
+  const nm = $("nm").value.trim(), pr = parseFloat($("price").value) || 0, cu = $("cur").value, l = $("pvLg"), a = acc(curPay);
+  l.textContent = ""; l.className = "lg" + (lg || nm ? "" : " empty");
+  l.style.background = lg || !nm ? "transparent" : col;
+  if (lg) { const i = new Image(); i.src = lg; i.alt = ""; l.append(i); } else if (nm) l.textContent = nm[0].toUpperCase();
+  $("pvNm").textContent = nm || "ชื่อบริการ"; $("pvNm").classList.toggle("ph", !nm);
+  $("pvPr").textContent = SYM[cu] + pr.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  $("pvCy").textContent = cyc === "m" ? "ทุกเดือน" : cyc === "y" ? "ทุกปี" : "ทุก " + (parseInt($("ck").value) || 1) + " " + UN[$("cu").value];
+  $("pvF").textContent = ft() ? fdate(ft()) : "—";
+  $("pvC").textContent = curCat;
+  $("pvP").textContent = a ? payTxt(a) : "ไม่ระบุ";
+  $("pvR").textContent = $("tRem").checked ? remTxt(remSel) : "ไม่เตือน";
+  $("pvOk").textContent = editing ? "บันทึก" : "เพิ่มรายการ";
+}
 function upd() {
   hint();
   const sub = (id, on, t) => { $(id).hidden = !on; $(id).textContent = t; }, c = i => $(i).checked;
@@ -89,6 +121,7 @@ function upd() {
   const a = acc(curPay);
   $("vPay").textContent = a ? payTxt(a) : "ไม่ระบุ";
   $("piP").innerHTML = svg("card", 20);
+  prev();
 }
 function setCyc(c) {
   cyc = c;
@@ -112,6 +145,36 @@ const setCol = c => {
   col = c;
   document.querySelectorAll("#sw button").forEach(b => b.setAttribute("aria-pressed", b.dataset.c === c));
 };
+const WS_HINT = "พิมพ์โดเมน เช่น netflix.com แล้วแอปจะลองดึงโลโก้ให้";
+// ดึงโลโก้จากโดเมนเว็บไซต์ (ต้องเป็นบริการที่อนุญาต CORS เพื่อย่อเป็นไฟล์เล็กเก็บในแอปได้) ถ้าไม่ได้ก็บอกให้อัปโหลดเอง
+const domOf = v => v.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split(/[/?#]/)[0];
+const LOGO_SRC = d => ["https://icon.horse/icon/" + d, "https://www.google.com/s2/favicons?domain=" + d + "&sz=128"];
+async function fetchLogo(d) {
+  for (const u of LOGO_SRC(d)) {
+    try {
+      const im = await new Promise((ok, no) => { const i = new Image(); i.crossOrigin = "anonymous"; i.onload = () => ok(i); i.onerror = no; i.src = u; setTimeout(() => no(new Error("timeout")), 7000); });
+      if (im.width < 16) continue;
+      const c = document.createElement("canvas");
+      c.width = c.height = 64;
+      const x = c.getContext("2d"), sc = Math.max(64 / im.width, 64 / im.height);
+      x.drawImage(im, (64 - im.width * sc) / 2, (64 - im.height * sc) / 2, im.width * sc, im.height * sc);
+      const url = c.toDataURL("image/webp", 0.85);
+      if (url.startsWith("data:image/")) return url;
+    } catch (e) { /* ลองแหล่งถัดไป */ }
+  }
+  return "";
+}
+async function autoLogo() {
+  const d = domOf($("ws").value), st = $("wsS");
+  if (!d) { st.textContent = WS_HINT; return; }
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d)) { st.textContent = "โดเมนไม่ถูกต้อง ลองพิมพ์แบบ netflix.com"; return; }
+  if (lg && !lgAuto) { st.textContent = WS_HINT; return; } // มีโลโก้ที่อัปโหลดเองแล้ว ไม่ทับ
+  st.textContent = "กำลังดึงโลโก้…";
+  const url = await fetchLogo(d);
+  if (domOf($("ws").value) !== d) return; // ผู้ใช้แก้โดเมนระหว่างรอ
+  if (url) { setLogo(url); lgAuto = true; st.textContent = "ดึงโลโก้แล้ว"; upd(); }
+  else { if (lgAuto && lg) { setLogo(""); upd(); } st.textContent = "ดึงโลโก้ไม่ได้ อัปโหลดเองได้ที่ไอคอนซ้ายของชื่อบริการ"; } // โลโก้เก่าที่ดึงมาเองจากโดเมนก่อนหน้า ล้างทิ้ง
+}
 function setLogo(url) {
   lg = url || "";
   $("lgb").style.backgroundImage = lg ? "url(" + lg + ")" : "";
@@ -195,14 +258,14 @@ function reset() {
   P = []; drawP();
   remSel = S.rem.slice(); remCustom = false; drawRem(); $("remC").hidden = true;
   curCat = (S.cats.find(c => c.n === "อื่นๆ") || S.cats[0]).n; curPay = "";
-  setEM("n"); setTN(7); setCyc("m"); setCol(COL[0]); setLogo("");
+  setEM("n"); setTN(7); setCyc("m"); setCol(COL[0]); setLogo(""); lgAuto = true; $("wsS").textContent = WS_HINT;
 }
 function fill(s) {
   reset();
   $("nm").value = s.name; $("pl").value = s.plan || ""; $("ws").value = s.site || "";
   $("price").value = s.price; $("cur").value = s.cur; $("first").value = s.start || s.first;
   setCyc(s.cy); $("ck").value = s.cy === "c" ? s.k : 1; $("cu").value = s.cy === "c" ? s.u : "m";
-  setCol(s.color || COL[0]); setLogo(s.logo);
+  setCol(s.color || COL[0]); setLogo(s.logo); lgAuto = !s.logo;
   curCat = s.cat || curCat; curPay = s.pay || "";
   if (s.trial) { $("tTrial").checked = true; $("trialD").value = s.trial; setTN(0); }
   if ((s.ppl || []).length) { $("tShare").checked = true; P = s.ppl.map(p => ({ name: p.name, amt: p.amt, until: p.until || "" })); drawP(); }
@@ -297,7 +360,7 @@ export function initForm() {
         c.width = c.height = 64;
         const x = c.getContext("2d"), sc = Math.max(64 / im.width, 64 / im.height);
         x.drawImage(im, (64 - im.width * sc) / 2, (64 - im.height * sc) / 2, im.width * sc, im.height * sc);
-        setLogo(c.toDataURL("image/webp", 0.85));
+        setLogo(c.toDataURL("image/webp", 0.85)); lgAuto = false; upd();
       };
       im.src = r.result;
     };
@@ -305,4 +368,7 @@ export function initForm() {
   };
   $("back").onclick = () => nav.go("list");
   $("save").onclick = save;
+  $("pvNo").onclick = () => nav.go("list");
+  $("pvOk").onclick = save;
+  $("ws").addEventListener("change", autoLogo);
 }

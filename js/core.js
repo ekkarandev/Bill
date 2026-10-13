@@ -223,6 +223,7 @@ export function applyTheme(store = true) {
   const dark = t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
   const m = document.querySelector('meta[name="theme-color"]');
   if (m) m.content = dark ? "#16132e" : "#7b6ef6";
+  window.dispatchEvent(new Event("themechange"));
 }
 
 /* ───────── Bottom sheet / dialog ───────── */

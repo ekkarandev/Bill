@@ -463,17 +463,73 @@ export function renderHistory() {
 let sp = "", sorting = false;
 export const resetSettingsPage = () => { sp = ""; };
 
+function backupNow() {
+  const d = { app: "jotbill", v: 2, exportedAt: new Date().toISOString(), subs: S.subs.map(({ id, ...r }) => r), accts: S.accts, cats: S.cats, rem: S.rem, cur: S.cur, rates: S.rates };
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], { type: "application/json" }));
+  a.download = "jotbill-" + iso(TD) + ".json";
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+// ลบบัญชี: ต้องพิมพ์คำยืนยัน แล้วระบบจะให้ยืนยันตัวตนกับ Google อีกครั้งก่อนลบจริง
+function deleteAccountSheet() {
+  const ok = h("button", "btn danger", "ลบบัญชีถาวร"), no = h("button", "btn ghost", "ยกเลิก"), inp = h("input");
+  ok.type = no.type = "button"; ok.disabled = true;
+  inp.placeholder = "พิมพ์ ลบ เพื่อยืนยัน"; inp.autocomplete = "off"; inp.setAttribute("aria-label", "พิมพ์คำว่า ลบ เพื่อยืนยัน");
+  inp.oninput = () => { const x = inp.value.trim().toLowerCase(); ok.disabled = !(x === "ลบ" || x === "delete"); };
+  no.onclick = closeSheet;
+  ok.onclick = () => { closeSheet(); nav.deleteAccount(); };
+  sheet("ลบบัญชีและข้อมูลทั้งหมด?", h("div", null, null, [
+    h("p", "mut", "สิ่งที่จะถูกลบถาวร และกู้คืนไม่ได้:"),
+    h("ul", "dl-list", null, [
+      h("li", null, "รายการ subscription และประวัติทั้งหมด (" + S.subs.length + " รายการ)"),
+      h("li", null, "หมวดหมู่ ช่องทางหักเงิน และการตั้งค่า"),
+      h("li", null, "บัญชีผู้ใช้ของแอปนี้ (บัญชี Google ของคุณไม่ถูกลบ)"),
+    ]),
+    btn("btn ghost", " ดาวน์โหลดไฟล์สำรองก่อน", backupNow, "download"),
+    fld("พิมพ์ ลบ เพื่อยืนยัน", inp),
+    h("p", "fine", "ระบบจะให้เลือกบัญชี Google เพื่อยืนยันตัวตนอีกครั้งก่อนลบ"),
+    h("div", "sbtn", null, [no, ok]),
+  ]));
+}
+
 function themeSeg() {
   const w = h("div", "seg tsg");
   [["light", "สว่าง", "sun"], ["dark", "มืด", "moon"], ["system", "ตามระบบ", "monitor"]].forEach(([k, t, i]) => {
     const b = h("button", null, null, [ico(i, 18)]);
     b.type = "button"; b.setAttribute("aria-label", t); b.setAttribute("aria-pressed", S.theme === k);
-    b.onclick = () => { S.theme = k; applyTheme(); persist(); w.replaceWith(themeSeg()); };
+    b.onclick = () => { S.theme = k; applyTheme(); if (S.user) persist(); else S.pre = true; };
     w.append(b);
   });
   return w;
 }
 export const themeToggle = themeSeg;
+
+/* ───────── แถบด้านบน: ภาษา · ธีม · บัญชี/เข้าสู่ระบบ ───────── */
+function langSeg() {
+  const w = h("div", "seg tsg");
+  [["th", "TH", "ภาษาไทย"], ["en", "EN", "English"]].forEach(([k, t, a]) => {
+    const b = h("button", null, t);
+    b.type = "button"; b.setAttribute("aria-label", a); b.setAttribute("aria-pressed", S.lang === k);
+    b.onclick = () => { setLang(k); if (S.user) persist(); else S.pre = true; };
+    w.append(b);
+  });
+  return w;
+}
+const tbHosts = new Map();
+const fillBar = (host, account) => { host.textContent = ""; host.append(langSeg(), themeSeg(), account()); };
+export function mountTopBar(host, account) { tbHosts.set(host, account); fillBar(host, account); }
+const refillBars = () => tbHosts.forEach((acc, host) => { if (host.isConnected) fillBar(host, acc); else tbHosts.delete(host); });
+window.addEventListener("themechange", refillBars);
+window.addEventListener("langchange", refillBars);
+// ปุ่มบัญชีในแอป: รูปโปรไฟล์ (ไปหน้าบัญชี) ซ่อนบนจอกว้างเพราะเมนูข้างมีอยู่แล้ว
+export function appAccount() {
+  if (S.user && S.user.guest) return btn("gh", "เข้าสู่ระบบ", () => nav.signIn());
+  const b = h("button", "tb-av", null, [avatar(S.user || {}, "avt sm")]);
+  b.type = "button"; b.setAttribute("aria-label", "ตั้งค่าบัญชี");
+  b.onclick = () => nav.go("set");
+  return b;
+}
 
 function catEdit(i) {
   let e = i < 0 ? "📦" : S.cats[i].e;
@@ -645,14 +701,25 @@ const SP = {
   },
   acc(v) {
     const u = S.user || {};
+    if (u.guest) {
+      v.append(card("บัญชี", "โหมดลองใช้: ข้อมูลที่จดเก็บอยู่ในเครื่องนี้เท่านั้น", [
+        h("div", "prof inner", null, [avatar(u, "avt"), h("div", "rt", null, [h("div", "nm", "โหมดลองใช้"), h("div", "sb", "ข้อมูลอยู่ในเครื่องนี้")])]),
+        h("p", "fine", "ถ้าล้างข้อมูลเบราว์เซอร์หรือเปลี่ยนเครื่อง ข้อมูลจะหายไป เข้าสู่ระบบด้วย Google เพื่อสำรองและใช้ได้ทุกเครื่อง"),
+        btn("btn", " เข้าสู่ระบบด้วย Google", () => nav.signIn(), "logout"),
+        btn("btn ghost danger-t", " ล้างข้อมูลในเครื่องนี้", () => ask("ล้างข้อมูลในเครื่องนี้?", "รายการและการตั้งค่าที่จดไว้ในโหมดลองใช้จะถูกลบถาวร ย้อนกลับไม่ได้", "ล้างข้อมูล", () => nav.clearGuest()), "trash"),
+      ]));
+      return;
+    }
     v.append(card("บัญชี", "ข้อมูลของคุณเก็บแยกตามบัญชี Google นี้ ซิงค์ทุกเครื่องที่ล็อกอิน", [
       h("div", "prof inner", null, [avatar(u, "avt"), h("div", "rt", null, [h("div", "nm", u.name || "ผู้ใช้"), h("div", "sb", u.email || "")])]),
       btn("btn ghost", " ออกจากระบบ", () => nav.signOut(), "logout"),
+      h("p", "fine dz", "การลบบัญชีจะลบรายการและการตั้งค่าทั้งหมดถาวร ย้อนกลับไม่ได้"),
+      btn("btn ghost danger-t", " ลบบัญชีและข้อมูลทั้งหมด", deleteAccountSheet, "trash"),
     ]));
   },
 };
 function avatar(u, cls) {
-  const letter = (u.name || u.email || "?")[0].toUpperCase(), a = h("div", cls, letter);
+  const letter = u.guest ? "J" : (u.name || u.email || "?")[0].toUpperCase(), a = h("div", cls, letter);
   if (u.photo) {
     const i = new Image();
     i.alt = ""; i.referrerPolicy = "no-referrer";
@@ -673,7 +740,7 @@ export function renderSettings() {
       const k = h("button", "pick", null, [h("span", "pi", null, [ico(m[1], 20)]), h("span", "pt", null, [h("b", null, m[2]), h("small", null, m[3])]), h("span", "mut", null, [ico("chevR", 18)])]);
       k.type = "button"; k.onclick = () => { sp = m[0]; renderSettings(); }; c.append(k);
     });
-    v.append(head("ตั้งค่า", null, null), h("div", "card prof", null, [avatar(u, "avt"), h("div", "rt", null, [h("div", "nm", u.name || "ผู้ใช้"), h("div", "sb", u.email || "")]), btn("gh", "ออกจากระบบ", () => nav.signOut())]), c);
+    v.append(head("ตั้งค่า", null, null), h("div", "card prof", null, [avatar(u, "avt"), h("div", "rt", null, [h("div", "nm", u.name || "ผู้ใช้"), h("div", "sb", u.email || "")]), u.guest ? btn("gh", "เข้าสู่ระบบ", () => nav.signIn()) : btn("gh", "ออกจากระบบ", () => nav.signOut())]), c);
     return;
   }
   const bk = h("button", "bk", null, [ico("chevL", 18), " ตั้งค่า"]);
@@ -694,20 +761,21 @@ function show(html) {
 export function showApp() { root().hidden = true; $("app").hidden = false; }
 export const SKEL = `<div class="skel-app on"><div class="skel-in"><div class="sk-b sk-t"></div><div class="sk-b sk-hero"></div><div class="sk-g"><div class="sk-b sk-c"></div><div class="sk-b sk-c"></div><div class="sk-b sk-c"></div><div class="sk-b sk-c"></div></div><div class="sk-b sk-r"></div><div class="sk-b sk-r"></div><div class="sk-b sk-r"></div></div></div>`;
 export function renderSplash() { show(SKEL); }
-export function renderLogin(onSign) {
-  show(`<main class="login"><button class="lang-b" id="lgLang" type="button">${S.lang === "th" ? "English" : "ไทย"}</button><div class="lg-wrap">
+export function renderLogin(onSign, onGuest) {
+  show(`<main class="login"><div class="topbar login-tb" id="lgTb"></div><div class="lg-wrap">
     <section class="lg-copy">
       <div class="brand">${LOGO}<b>จดบิล</b></div>
       <h1>จดค่า Subscription ให้ไม่หลุดสักรายการ</h1>
       <p class="lead">รวมทุกรายการที่ตัดเงินอัตโนมัติไว้ที่เดียว เห็นยอดรายเดือนและรายปี แล้วรู้ล่วงหน้าก่อนถูกตัดเงินหรือก่อนหมดช่วงทดลองใช้</p>
       <button class="gbtn" id="gsign" type="button">${GOOGLE}<span>เข้าสู่ระบบด้วย Google</span></button>
+      <button class="gbtn gst" id="gguest" type="button"><span>ลองใช้ก่อน ไม่ต้องล็อกอิน</span></button>
       <p class="fine" id="lgerr" role="alert"></p>
       <ul class="perks">
         <li>${svg("bell", 20)}<span><b>เตือนก่อนตัดเงิน</b> เลือกได้ว่าจะให้เตือนก่อนกี่วัน</span></li>
         <li>${svg("globe", 20)}<span><b>รวมหลายสกุลเงิน</b> บาท ดอลลาร์ ยูโร เยน แปลงเป็นยอดเดียว</span></li>
         <li>${svg("users", 20)}<span><b>หารกับเพื่อน</b> คิดเฉพาะส่วนที่คุณจ่ายจริง</span></li>
       </ul>
-      <p class="fine">ใช้บัญชี Google เพื่อระบุว่าข้อมูลเป็นของใคร ไม่มีการโพสต์หรืออ่านอะไรจากบัญชีของคุณ</p>
+      <p class="fine">ใช้บัญชี Google เพื่อระบุว่าข้อมูลเป็นของใคร ไม่มีการโพสต์หรืออ่านอะไรจากบัญชีของคุณ ส่วนโหมดลองใช้จะเก็บข้อมูลในเครื่องนี้เท่านั้น เข้าสู่ระบบทีหลังแล้วนำมาไว้ในบัญชีได้</p>
     </section>
     <section class="lg-art" aria-hidden="true">
       <div class="blob"></div>
@@ -724,7 +792,8 @@ export function renderLogin(onSign) {
     </section>
   </div></main>`);
   $("gsign").onclick = onSign;
-  $("lgLang").onclick = () => { setLang(S.lang === "th" ? "en" : "th"); $("lgLang").textContent = S.lang === "th" ? "English" : "ไทย"; };
+  $("gguest").onclick = onGuest;
+  mountTopBar($("lgTb"), () => btn("gh", "เข้าสู่ระบบ", onSign));
   if (/Line\/|FBAN|FBAV|Instagram/i.test(navigator.userAgent)) loginError("Google ไม่อนุญาตให้ล็อกอินในเบราว์เซอร์ของแอปแชต เปิดลิงก์นี้ใน Chrome หรือ Safari แทน");
 }
 export function loginError(msg) { const e = $("lgerr"); if (e) e.textContent = msg; }

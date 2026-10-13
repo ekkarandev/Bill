@@ -1,11 +1,11 @@
 // จุดเริ่มต้นของแอป: ตรวจการล็อกอิน → ฟังข้อมูลจาก Firestore → แสดงหน้าจอ
 import * as B from "./backend.js";
-import { $, h, ico, S, nav, DEF_RATE, defaultCats, refreshToday, applyTheme, initUi, syncRates, buzz } from "./core.js";
+import { $, h, ico, S, nav, DEF_RATE, defaultCats, refreshToday, applyTheme, initUi, syncRates, buzz, persist, toast, ask } from "./core.js";
 import { initForm, openForm } from "./form.js";
 import { initLang, setLang } from "./i18n.js";
 import {
   renderHome, renderList, renderCal, renderHistory, renderSettings, resetSettingsPage, avatarOf, LOGO,
-  renderLogin, loginError, renderSetup, renderError, renderSplash, showApp, armIntro,
+  renderLogin, loginError, renderSetup, renderError, renderSplash, showApp, armIntro, mountTopBar, appAccount,
 } from "./views.js";
 
 const VIEWS = { home: renderHome, list: renderList, cal: renderCal, his: renderHistory, set: renderSettings };
@@ -31,7 +31,7 @@ function buildNav() {
 function updateNavUser() {
   const u = $("navUser"), s = S.user || {};
   u.textContent = "";
-  u.append(avatarOf(s, "avt sm"), h("span", "nu-t", null, [h("b", null, s.name || "ผู้ใช้"), h("small", null, s.email || "")]));
+  u.append(avatarOf(s, "avt sm"), h("span", "nu-t", null, [h("b", null, s.name || "ผู้ใช้"), h("small", null, s.guest ? "ข้อมูลอยู่ในเครื่องนี้" : s.email || "")]));
 }
 
 /* ───── เปลี่ยนหน้า (ใช้ hash เพื่อให้ปุ่มย้อนกลับของมือถือทำงาน) ───── */
@@ -85,12 +85,23 @@ const authErr = e => {
   return "เข้าสู่ระบบไม่สำเร็จ" + (c ? " (" + c + ")" : "");
 };
 
+const delErr = e => {
+  const c = (e && e.code) || "";
+  if (c === "auth/user-mismatch") return "ต้องยืนยันด้วยบัญชี Google เดียวกับที่ล็อกอินอยู่";
+  if (c === "auth/popup-blocked") return "เบราว์เซอร์บล็อกหน้าต่างยืนยันตัวตน อนุญาตป๊อปอัปแล้วลองใหม่";
+  if (c.startsWith("auth/")) return "ยืนยันตัวตนไม่สำเร็จ ลองใหม่อีกครั้ง";
+  return "ลบบัญชีไม่สำเร็จ ลองใหม่อีกครั้ง";
+};
+const guestOn = () => { try { return localStorage.getItem("jb-guest") === "1"; } catch (e) { return false; } };
+const setGuest = on => { try { if (on) localStorage.setItem("jb-guest", "1"); else localStorage.removeItem("jb-guest"); } catch (e) { /* ignore */ } };
+
 /* ───── หลังล็อกอิน ───── */
 function start(u) {
   if (activeUid === u.uid) return;
   stop();
   activeUid = u.uid;
-  S.user = { uid: u.uid, name: u.displayName || "", email: u.email || "", photo: u.photoURL || "" };
+  B.setMode(u.guest ? "local" : "cloud");
+  S.user = { uid: u.uid, guest: !!u.guest, name: u.displayName || "", email: u.email || "", photo: u.photoURL || "" };
   renderSplash();
   let gotUser = false, gotSubs = false;
   const timer = setTimeout(() => { if (!ready) renderError("ใช้เวลานานเกินไป ตรวจสอบอินเทอร์เน็ตและการตั้งค่า Firestore", () => location.reload()); }, 20000);
@@ -110,17 +121,42 @@ function start(u) {
     S.cur = d.cur || "THB";
     S.rates = { USD: DEF_RATE.USD, EUR: DEF_RATE.EUR, JPY: DEF_RATE.JPY, ...(d.rates || {}) };
     S.autoRate = d.autoRate !== false; S.ratesAt = d.ratesAt || 0;
-    if (d.lang && d.lang !== S.lang) setLang(d.lang);
-    if (d.theme && d.theme !== S.theme) { S.theme = d.theme; applyTheme(); }
+    // ถ้าเพิ่งเลือกภาษา/ธีมจากแถบด้านบนก่อนล็อกอิน ให้ใช้ค่านั้นต่อ (แล้วบันทึกขึ้นบัญชีตอนเข้าแอป)
+    if (!S.pre) {
+      if (d.lang && d.lang !== S.lang) setLang(d.lang);
+      if (d.theme && d.theme !== S.theme) { S.theme = d.theme; applyTheme(); }
+    }
     gotUser = true; check();
   }, list => { S.subs = list; gotSubs = true; check(); }, onErr);
+}
+// เพิ่งล็อกอินและยังมีข้อมูลที่จดไว้ในโหมดลองใช้ → ถามว่าจะนำมาไว้ในบัญชีไหม
+function offerMigration() {
+  let seen = false;
+  try { seen = sessionStorage.getItem("jb-mig") === "1"; } catch (e) { /* ignore */ }
+  const snap = B.localSnapshot();
+  if (seen || (S.user && S.user.guest) || !snap.subs.length) return;
+  try { sessionStorage.setItem("jb-mig", "1"); } catch (e) { /* ignore */ }
+  ask("นำข้อมูลที่ลองใช้ไปไว้ในบัญชีไหม?", "พบ " + snap.subs.length + " รายการที่จดไว้ในโหมดลองใช้บนเครื่องนี้ ต้องการนำมาไว้ในบัญชีนี้ไหม", "นำมาไว้ในบัญชี", async () => {
+    try {
+      await B.batch(snap.subs.map(({ id, ...r }) => ({ set: { ...r, id: B.newId() } })));
+      const st = snap.settings || {};
+      S.cats = [...S.cats, ...(st.cats || []).filter(c => !S.cats.some(x => x.n === c.n))];
+      S.accts = [...S.accts, ...(st.accts || []).filter(a => !S.accts.some(x => x.id === a.id))];
+      persist();
+      B.clearLocal();
+      toast("นำข้อมูลมาไว้ในบัญชีแล้ว");
+    } catch (e) { console.error(e); toast("นำข้อมูลมาไม่สำเร็จ ลองใหม่อีกครั้ง"); }
+  }, false);
 }
 function enter() {
   try { localStorage.setItem("jb-seen", "1"); } catch (e) { /* ignore */ }
   showApp();
+  mountTopBar($("topbar"), appAccount);
+  if (S.pre) { S.pre = false; persist(); }
   updateNavUser();
   show(viewFromHash());
   syncRates().then(ok => { if (ok) refresh(); });
+  offerMigration();
 }
 function stop() {
   if (unsub) { unsub(); unsub = null; }
@@ -129,7 +165,34 @@ function stop() {
 }
 async function doSignIn() {
   loginError("");
-  try { await B.signIn(); } catch (e) { console.error(e); loginError(authErr(e)); }
+  try { await B.signIn(); } catch (e) { console.error(e); if (S.user && S.user.guest) toast(authErr(e)); else loginError(authErr(e)); }
+}
+function startGuest() {
+  setGuest(true);
+  start({ uid: "local", guest: true, displayName: "โหมดลองใช้", email: "", photoURL: "" });
+}
+function clearGuest() {
+  B.clearLocal(); setGuest(false);
+  stop();
+  location.hash = "";
+  renderLogin(doSignIn, startGuest);
+  toast("ล้างข้อมูลในเครื่องแล้ว");
+}
+async function deleteAccount() {
+  try { await B.reauth(); } catch (e) {
+    if (e && e.code !== "auth/popup-closed-by-user" && e.code !== "auth/cancelled-popup-request") toast(delErr(e));
+    return;
+  }
+  try {
+    if (unsub) { unsub(); unsub = null; } // หยุดฟังข้อมูลก่อน ไม่งั้นแอปจะสร้างค่าเริ่มต้นกลับมาใหม่
+    ready = false;
+    renderSplash();
+    await B.wipeAccount();
+    try { localStorage.removeItem("jb-seen"); } catch (e) { /* ignore */ }
+    activeUid = null;
+    location.hash = "";
+    toast("ลบบัญชีและข้อมูลทั้งหมดเรียบร้อยแล้ว");
+  } catch (e) { console.error(e); renderError(delErr(e), () => location.reload()); }
 }
 async function signOut() {
   try { localStorage.removeItem("jb-seen"); } catch (e) { /* ignore */ }
@@ -153,12 +216,19 @@ async function boot() {
   nav.go = go;
   nav.openForm = s => { formOpen = true; openForm(s); };
   nav.signOut = signOut;
+  nav.signIn = doSignIn;
+  nav.clearGuest = clearGuest;
+  nav.deleteAccount = deleteAccount;
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") { refreshToday(); refresh(); }
   });
   if (!B.isConfigured()) { renderSetup(); return; }
   renderSplash();
   try { await B.init(); } catch (e) { console.error(e); renderError("โหลด Firebase ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วลองใหม่", () => location.reload()); return; }
-  B.onAuth(u => { if (u) start(u); else { stop(); renderLogin(doSignIn); } });
+  B.onAuth(u => {
+    if (u) { setGuest(false); start(u); }
+    else if (guestOn()) startGuest();
+    else { stop(); renderLogin(doSignIn, startGuest); }
+  });
 }
 boot();
