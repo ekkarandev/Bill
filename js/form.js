@@ -1,4 +1,5 @@
 // ฟอร์มเพิ่ม / แก้ไขรายการ
+import { brandOf, cardColor, markEl } from "./brands.js";
 import {
   $, h, svg, S, nav, COL, PCOL, PAYG, UN, SYM, iso, prs, TD, addD, dstr, fdate, nth, bdg, acc, payTxt, remTxt,
   toast, sheet, closeSheet, fld, remChips, persist, saveSub, newId,
@@ -120,7 +121,8 @@ function upd() {
   $("piC").textContent = (S.cats.find(x => x.n === curCat) || { e: "📦" }).e;
   const a = acc(curPay);
   $("vPay").textContent = a ? payTxt(a) : "ไม่ระบุ";
-  $("piP").innerHTML = svg("card", 20);
+  const pp = $("piP"); pp.textContent = "";
+  if (a) pp.append(markEl(a.type, "sm")); else pp.innerHTML = svg("card", 20);
   prev();
 }
 function setCyc(c) {
@@ -208,14 +210,14 @@ function drawRem() {
 /* ───── ตัวเลือกหมวด / ช่องทางหักเงิน ───── */
 function orow(ic, t, on, fn) {
   const i = h("span", "oic");
-  if (ic.startsWith("<")) i.innerHTML = ic; else i.textContent = ic;
+  if (ic instanceof Node) i.append(ic); else if (ic.startsWith("<")) i.innerHTML = ic; else i.textContent = ic;
   const b = h("button", "orow" + (on ? " on" : ""), null, [i, h("span", "otx", t), h("span", "ck", on ? "✓" : "")]);
   b.type = "button";
   b.onclick = fn;
   return b;
 }
 export function newAcct(after) {
-  let touched = false, c = PCOL[0];
+  let touched = false, picked = false, c = PCOL[0];
   const sel = h("select"), b = h("div", "bdg"), nm = h("input"), l4 = h("input"), sw = h("div", "sw");
   PAYG.forEach(g => {
     const og = document.createElement("optgroup");
@@ -224,17 +226,23 @@ export function newAcct(after) {
     sel.append(og);
   });
   sel.id = "npt"; nm.value = sel.value; nm.maxLength = 30; l4.placeholder = "1234"; l4.maxLength = 4; l4.inputMode = "numeric";
+  const bc = () => (brandOf(sel.value) || {}).c;
   const paint = () => {
-    b.textContent = bdg(sel.value); b.style.color = c;
+    b.textContent = ""; b.append(markEl(sel.value));
     sw.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x.dataset.c === c));
   };
-  PCOL.forEach(k => {
-    const x = h("button"); x.type = "button"; x.dataset.c = k; x.style.background = k;
-    x.setAttribute("aria-label", "สี " + k); x.onclick = () => { c = k; paint(); }; sw.append(x);
-  });
-  sel.onchange = () => { if (!touched) nm.value = sel.value; paint(); };
+  // สีแรกในชุดสีคือสีแบรนด์ของช่องทางที่เลือก (ถ้ามี)
+  const sws = () => {
+    const bcol = bc(), list = bcol ? [bcol, ...PCOL.filter(k => k !== bcol)] : PCOL;
+    sw.textContent = "";
+    list.forEach(k => {
+      const x = h("button"); x.type = "button"; x.dataset.c = k; x.style.background = k;
+      x.setAttribute("aria-label", "สี " + k); x.onclick = () => { c = k; picked = true; paint(); }; sw.append(x);
+    });
+  };
+  sel.onchange = () => { if (!touched) nm.value = sel.value; if (!picked) c = bc() || PCOL[0]; sws(); paint(); };
   nm.oninput = () => { touched = true; };
-  paint();
+  c = bc() || PCOL[0]; sws(); paint();
   const no = h("button", null, "ยกเลิก"), ok = h("button", "dk", "เพิ่มบัญชี");
   no.type = ok.type = "button";
   no.onclick = closeSheet;
@@ -345,7 +353,7 @@ export function initForm() {
   $("pPay").onclick = () => {
     const w = h("div");
     w.append(orow("–", "ไม่ระบุ", !curPay, () => { curPay = ""; closeSheet(); upd(); }));
-    S.accts.forEach(a => w.append(orow(svg("card", 20), payTxt(a), curPay === a.id, () => { curPay = a.id; closeSheet(); upd(); })));
+    S.accts.forEach(a => w.append(orow(markEl(a.type, "sm"), payTxt(a), curPay === a.id, () => { curPay = a.id; closeSheet(); upd(); })));
     w.append(orow(svg("plus", 20), "บัญชีใหม่", false, () => newAcct(a => { curPay = a.id; upd(); })));
     sheet("ช่องทางหักเงิน", w);
   };

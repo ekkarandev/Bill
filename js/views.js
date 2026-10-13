@@ -7,6 +7,7 @@ import {
 } from "./core.js";
 import { newAcct } from "./form.js";
 import { setLang } from "./i18n.js";
+import { brandOf, cardColor, gradOf, markEl } from "./brands.js";
 
 /* ───────── ชิ้นส่วนที่ใช้ซ้ำ ───────── */
 export function logo(s) {
@@ -149,15 +150,14 @@ export function renderHome() {
   if (S.accts.length) {
     const row = h("div", "cards");
     S.accts.forEach(c => {
-      const L = S.subs.filter(s => s.pay === c.id), bd = h("div", "bdg", bdg(c.type));
-      bd.style.color = c.color;
-      const k = h("div", "pcard", null, [
-        h("div", "pt2", null, [h("div", null, null, [h("b", null, c.name), h("small", null, c.type)]), bd]),
-        h("div", "dots", "•••• •••• •••• " + (c.last4 || "••••")),
+      const L = S.subs.filter(s => s.pay === c.id), g = gradOf(cardColor(c));
+      const k = h("div", "pcard" + (g.light ? " lt" : ""), null, [
+        h("div", "pt2", null, [h("div", null, null, [h("b", null, c.name), h("small", null, c.type)]), markEl(c.type)]),
+        h("div", "dots", null, ["•••• •••• •••• ", c.last4 ? h("i", null, c.last4) : "••••"]),
         h("div", "pf", null, [h("div", null, null, [h("small", null, "หักเดือนนี้"), h("b", null, money(L.reduce((x, s) => x + mt(s), 0)))]), h("small", null, L.reduce((x, s) => x + occ(s, A, Bm).length, 0) + " รายการ")]),
       ]);
-      k.style.backgroundColor = c.color;
-      k.style.background = "linear-gradient(135deg," + c.color + ",color-mix(in srgb," + c.color + " 55%,#fff))";
+      k.style.background = "linear-gradient(135deg," + g.c1 + "," + g.c2 + ")";
+      k.style.setProperty("--c1", g.c1);
       row.append(k);
     });
     v.append(row);
@@ -460,6 +460,26 @@ export function renderHistory() {
 }
 
 /* ───────── ตั้งค่า ───────── */
+// การ์ดช่องทางหักเงิน: ไล่สีตามแบรนด์ + โลโก้ + ยอดหักเดือนนี้
+function payCard(a) {
+  const act = S.subs.filter(s => s.pay === a.id && !s.paused);
+  const A = new Date(TD.getFullYear(), TD.getMonth(), 1), E = new Date(TD.getFullYear(), TD.getMonth() + 1, 0);
+  const tot = act.reduce((x, s) => x + occ(s, A, E).reduce((y, d) => y + thb(s, d), 0), 0); // ยอดที่ตัดในเดือนนี้ (นับตามวันตัดจริง)
+  const g = gradOf(cardColor(a));
+  const dots = a.last4 ? "•••• •••• •••• " : "•••• •••• •••• •••• ";
+  const el = h("article", "bcard" + (g.light ? " lt" : ""), null, [
+    h("div", "bc-t", null, [h("div", "bc-nm", null, [h("b", null, a.name), h("small", null, a.type)]), markEl(a.type)]),
+    h("div", "bc-n", null, [dots, a.last4 ? h("i", null, a.last4) : ""]),
+    h("div", "bc-b", null, [h("div", null, null, [h("small", null, "หักเดือนนี้"), h("b", null, money(tot))]), h("span", null, act.length + " รายการ")]),
+  ]);
+  el.style.setProperty("--c1", g.c1); el.style.setProperty("--c2", g.c2);
+  const del = xb("trash", "ลบ " + a.name, () => ask("ลบ " + a.name + "?", "รายการที่ใช้ช่องทางนี้จะกลายเป็น ไม่ระบุ", "ลบช่องทาง", () => {
+    const ops = S.subs.filter(s => s.pay === a.id).map(s => ({ set: { ...s, pay: "" } }));
+    if (ops.length) batchOps(ops);
+    S.accts = S.accts.filter(q => q.id !== a.id); persist(); renderSettings();
+  }));
+  return h("div", "bc-w", null, [el, h("div", "bc-act", null, [del])]);
+}
 let sp = "", sorting = false;
 export const resetSettingsPage = () => { sp = ""; };
 
@@ -663,16 +683,9 @@ const SP = {
   pay(v) {
     const c = card("ช่องทางหักเงิน", "บัตรและกระเป๋าเงินที่ใช้จ่าย เพื่อดูยอดรวมแยกตามช่องทาง", [h("div", "tr2 end", null, [btn("dk", " เพิ่มช่องทาง", () => newAcct(() => renderSettings()), "plus")])]);
     if (!S.accts.length) c.append(h("p", "empty", "ยังไม่มีช่องทาง"));
-    S.accts.forEach(a => {
-      const t = h("div", "lg", bdg(a.type).slice(0, 4));
-      t.style.background = a.color; t.style.fontSize = "12px";
-      c.append(h("div", "cr", null, [t, h("div", "rt", null, [h("div", "nm", a.name), h("div", "sb", a.type + (a.last4 ? " ••" + a.last4 : ""))]),
-        xb("trash", "ลบ " + a.name, () => ask("ลบ " + a.name + "?", "รายการที่ใช้ช่องทางนี้จะกลายเป็น ไม่ระบุ", "ลบช่องทาง", () => {
-          const ops = S.subs.filter(s => s.pay === a.id).map(s => ({ set: { ...s, pay: "" } }));
-          if (ops.length) batchOps(ops);
-          S.accts = S.accts.filter(q => q.id !== a.id); persist(); renderSettings();
-        }))]));
-    });
+    const g = h("div", "bgrid");
+    S.accts.forEach(a => g.append(payCard(a)));
+    if (S.accts.length) c.append(g);
     v.append(c);
   },
   ntf(v) {
