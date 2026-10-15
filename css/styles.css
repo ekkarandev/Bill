@@ -506,3 +506,23 @@ html.seen .splash { display: none; }
 .pcard .dots i { font-style: normal; font-size: 21px; letter-spacing: .22em; }
 .pcard .pt2 { align-items: flex-start; }
 .orow .pmk { margin-right: 6px; }
+
+/* ───── ช่องเลือกวันที่: กันล้นขอบการ์ดบน iPad/iPhone ───── */
+input[type="date"] { display: block; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; text-align: left; -webkit-appearance: none; appearance: none; min-height: 50px; line-height: 1.4; }
+input[type="date"]::-webkit-date-and-time-value { text-align: left; min-height: 1.4em; }
+input[type="date"]::-webkit-calendar-picker-indicator { margin-left: auto; }
+
+/* ───── นับถอยหลังบนการ์ดวันที่ + สรุปประจำเดือน ───── */
+.hero-cd { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 0 14px; padding: 12px 16px; background: #ffffff1f; border-radius: 18px; }
+.hero-cd small { grid-column: 1 / -1; opacity: .85; font-size: 12.5px; line-height: 1.5; }
+.hero-cd b { font: 700 30px/1.25 Prompt, sans-serif; white-space: nowrap; }
+.hero-cd span { font-weight: 500; opacity: .96; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.smc { margin-top: 14px; }
+.smc-t { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 6px 0 4px; }
+.smc-t b { font: 700 32px/1.2 Prompt, sans-serif; }
+.dchip { border-radius: 999px; padding: 5px 12px; font-size: 14px; font-weight: 600; }
+.dchip.up { background: #ef444424; color: #dc2626; }
+.dchip.down { background: #10b98124; color: #059669; }
+.dchip.eq { background: var(--fld); color: var(--mut); }
+:root[data-theme="dark"] .dchip.up { color: #f87171; }
+:root[data-theme="dark"] .dchip.down { color: #34d399; }
