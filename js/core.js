@@ -59,6 +59,7 @@ export const DEF_RATE = { THB: 1, USD: 35, EUR: 38, JPY: 0.23 };
 export const UN = { d: "วัน", w: "สัปดาห์", m: "เดือน", y: "ปี" };
 export const MN = "มกราคม กุมภาพันธ์ มีนาคม เมษายน พฤษภาคม มิถุนายน กรกฎาคม สิงหาคม กันยายน ตุลาคม พฤศจิกายน ธันวาคม".split(" ");
 export const MS = "ม.ค. ก.พ. มี.ค. เม.ย. พ.ค. มิ.ย. ก.ค. ส.ค. ก.ย. ต.ค. พ.ย. ธ.ค.".split(" ");
+export const NEUTRAL = "#94a3b8"; // สีของรายการที่ไม่ได้เลือกสี
 export const WDN = "อาทิตย์ จันทร์ อังคาร พุธ พฤหัสบดี ศุกร์ เสาร์".split(" ");
 export const COL = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#8b5cf6"];
 export const PCOL = ["#1e1b6b", "#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#8b5cf6", "#14b8a6", "#f97316", "#64748b"];
@@ -129,13 +130,25 @@ const ALL = new Date(2000, 0, 1);
 export const past = s => occ(s, ALL, addD(TD, -1));
 export const nxt = s => occ(s, TD, new Date(TD.getFullYear() + 2, TD.getMonth(), TD.getDate()))[0];
 
+// ลำดับรอบตัดเงิน (เริ่มที่ 0) ของวันที่ d ถ้า d ไม่ใช่วันตัดเงินจะได้ลำดับของรอบถัดไป
+export function chargeNo(s, d) {
+  const f = prs(s.first);
+  for (let n = 0; n < 5000; n++) if (nth(s, f, n) >= d) return n;
+  return 5000;
+}
+// ราคาต่อรอบ ณ วันที่ d: ช่วง N รอบแรกใช้ราคาโปรโมชัน หลังจากนั้นเป็นราคาเต็ม (s.promo = { price, n })
+export const basePrice = (s, d) => (s.promo && s.promo.n > 0 && chargeNo(s, d || TD) < s.promo.n ? +s.promo.price || 0 : s.price);
+export const promoLeft = s => (s.promo && s.promo.n > 0 ? Math.max(0, s.promo.n - chargeNo(s, TD)) : 0);
+
 // ยอดที่ "เราจ่าย" ในรอบวันที่ d เป็นบาท (หักส่วนของคนที่หารด้วยออก)
 export function thb(s, d) {
   d = d || TD;
   const others = (s.ppl || []).reduce((a, p) => a + (p.until && d > prs(p.until) ? 0 : +p.amt || 0), 0);
-  return Math.max(0, s.price - others) * rate(s.cur);
+  return Math.max(0, basePrice(s, d) - others) * rate(s.cur);
 }
 // เฉลี่ยต่อเดือนเป็นบาท
+// ประมาณการต่อปี: รายการที่มีราคาโปรโมชันนับตามยอดที่จะตัดจริงใน 365 วันข้างหน้า
+export const yr = s => (s.promo && s.promo.n > 0 && !s.paused ? occ(s, TD, addD(TD, 364)).reduce((x, d) => x + thb(s, d), 0) : mon(s) * 12);
 export function mon(s) {
   if (s.paused) return 0;
   const [u, k] = unitOf(s), x = thb(s);
@@ -152,11 +165,11 @@ export function money(x) {
   const c = S.cur;
   return SYM[c] + (x / rate(c)).toLocaleString("th-TH", { minimumFractionDigits: dec(c), maximumFractionDigits: dec(c) });
 }
-export function price(s) {
-  return (s.cur === "USD" ? "US$" : SYM[s.cur]) + s.price.toLocaleString("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
+export const pfmt = (s, x) => (s.cur === "USD" ? "US$" : SYM[s.cur]) + x.toLocaleString("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+export function price(s) { return pfmt(s, basePrice(s)); }
 export function subtxt(s) {
-  return [s.plan, price(s) + " / " + cyl(s)].filter(Boolean).join(" · ") + ((s.ppl || []).length ? " · หาร " + (s.ppl.length + 1) + " คน" : "");
+  const pl = promoLeft(s);
+  return [s.plan, price(s) + " / " + cyl(s)].filter(Boolean).join(" · ") + (pl ? " · โปรอีก " + pl + " ครั้ง" : "") + ((s.ppl || []).length ? " · หาร " + (s.ppl.length + 1) + " คน" : "");
 }
 export const bdg = t => { const m = t.match(/\((.*)\)/); return m ? m[1] : t.split(" ")[0]; };
 export const acc = id => S.accts.find(a => a.id === id);

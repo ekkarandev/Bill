@@ -2,7 +2,7 @@
 import {
   $, h, ico, svg, S, nav, SYM, MN, MS, COL, DEF_RATE, EMO, WDN, rate, past, syncRates, buzz, greet, reduceMotion,
   TD, iso, prs, addD, daysTo, dstr, fdate, dayTxt, occ, nxt, thb, mon, cyl, remList, remOf, remTxt,
-  money, price, subtxt, bdg, acc, payTxt, catOf,
+  money, price, subtxt, bdg, acc, payTxt, catOf, yr, pfmt, NEUTRAL,
   toast, persist, saveSub, removeSub, batchOps, newId, applyTheme, sheet, closeSheet, ask, fld, remChips,
 } from "./core.js";
 import { newAcct } from "./form.js";
@@ -12,7 +12,7 @@ import { brandOf, cardColor, gradOf, markEl } from "./brands.js";
 /* ───────── ชิ้นส่วนที่ใช้ซ้ำ ───────── */
 export function logo(s) {
   const l = h("div", "lg", s.logo ? null : (s.name || "?")[0].toUpperCase());
-  l.style.background = s.logo ? "transparent" : s.color || COL[0];
+  l.style.background = s.logo ? "transparent" : s.color || NEUTRAL;
   if (s.logo && String(s.logo).startsWith("data:image/")) { const i = new Image(); i.src = s.logo; i.alt = ""; l.append(i); }
   return l;
 }
@@ -60,8 +60,9 @@ export function showDetail(s) {
   const add = (k, v) => { if (v) rows.push(h("div", "fact", null, [h("dt", null, k), h("dd", null, v)])); };
   add("ตัดครั้งถัดไป", s.paused ? "หยุดชั่วคราว" : nd ? fdate(iso(nd)) + " · " + dayTxt(daysTo(nd)) : "สิ้นสุดแล้ว");
   add("ยอดต่อรอบ", price(s) + " / " + cyl(s) + (s.cur !== S.cur ? " ≈ " + money(thb(s)) : ""));
+  add("ราคาโปรโมชัน", s.promo && s.promo.n > 0 ? pfmt(s, s.promo.price) + " × " + s.promo.n + " ครั้งแรก · จากนั้น " + pfmt(s, s.price) : "");
   add("เฉลี่ยต่อเดือน", money(mon(live)));
-  add("ต่อปี", money(mon(live) * 12));
+  add("ต่อปี", money(yr(live)));
   const pd = past(s);
   add("จ่ายไปแล้ว", pd.length ? pd.length + " ครั้ง · " + money(pd.reduce((x, d) => x + thb(s, d), 0)) : "");
   add("หมวดหมู่", c.e + " " + c.n);
@@ -97,22 +98,41 @@ function countUp(el, to, fmt) {
 }
 // การ์ดวันที่ตัวใหญ่ บนสุดของหน้าภาพรวม พร้อมทางลัดไปประวัติ
 function heroCard(anim) {
-  const A = new Date(TD.getFullYear(), TD.getMonth(), 1);
+  const A = new Date(TD.getFullYear(), TD.getMonth(), 1), E = new Date(TD.getFullYear(), TD.getMonth() + 1, 0);
   const paid = S.subs.reduce((x, s) => x + occ(s, A, addD(TD, -1)).reduce((y, d) => y + thb(s, d), 0), 0);
+  const left = S.subs.reduce((x, s) => x + occ(s, TD, E).reduce((y, d) => y + thb(s, d), 0), 0);
   const nx = S.subs.filter(s => !s.paused && nxt(s)).map(s => [s, nxt(s)]).sort((p, q) => p[1] - q[1])[0];
   const kids = [h("div", "hero-top", null, [
     h("div", "hero-d", null, [h("b", null, TD.getDate())]),
     h("div", "hero-t", null, [h("span", null, WDN[TD.getDay()]), h("strong", null, MN[TD.getMonth()] + " " + TD.getFullYear())]),
   ])];
+  // นับถอยหลังวันตัดเงินครั้งถัดไป ตัวใหญ่
+  if (nx) kids.push(h("div", "hero-cd", null, [h("small", null, "ตัดเงินถัดไป"), h("b", null, dayTxt(daysTo(nx[1]))), h("span", null, nx[0].name + " · " + money(thb(nx[0], nx[1])))]));
   if (S.subs.length) {
     const hb = h("button", "hero-b", null, [h("small", null, "จ่ายแล้วเดือนนี้"), h("b", null, money(paid)), ico("chevR", 16)]);
+    const lf = h("div", null, null, [h("small", null, "ที่เหลือเดือนนี้"), h("b", null, money(left))]);
     hb.type = "button"; hb.onclick = () => nav.go("his");
-    if (anim) countUp(hb.querySelector("b"), paid, money);
-    kids.push(h("div", "hero-row", null, [
-      nx ? h("div", null, null, [h("small", null, "ตัดเงินถัดไป"), h("b", null, nx[0].name + " · " + dayTxt(daysTo(nx[1])))]) : null, hb,
-    ]));
+    if (anim) { countUp(hb.querySelector("b"), paid, money); countUp(lf.querySelector("b"), left, money); }
+    kids.push(h("div", "hero-row", null, [lf, hb]));
   }
   return h("section", "hero", null, kids);
+}
+
+// สรุปเดือนที่แล้ว เทียบกับเดือนก่อนหน้า
+function summaryCard() {
+  const a = new Date(TD.getFullYear(), TD.getMonth() - 1, 1), b = new Date(TD.getFullYear(), TD.getMonth() - 2, 1);
+  const cur = monthSum(a.getFullYear(), a.getMonth()), prv = monthSum(b.getFullYear(), b.getMonth());
+  if (!cur && !prv) return null;
+  const E = new Date(a.getFullYear(), a.getMonth() + 1, 0);
+  const per = S.subs.map(s => [s, occ(s, a, E).reduce((x, d) => x + thb(s, d), 0)]).filter(p => p[1] > 0).sort((p, q) => q[1] - p[1]);
+  const diff = cur - prv, pct = prv ? Math.round(Math.abs(diff) / prv * 100) : 0, bm = MN[b.getMonth()];
+  const chip = Math.abs(diff) < 0.5 ? h("span", "dchip eq", "เท่ากับเดือน" + bm)
+    : h("span", "dchip " + (diff > 0 ? "up" : "down"), (diff > 0 ? "เพิ่มขึ้น " : "ลดลง ") + money(Math.abs(diff)) + (pct ? " (" + pct + "%)" : "") + " จากเดือน" + bm);
+  return h("section", "card smc", null, [
+    h("h2", "ct", "สรุปเดือน" + MN[a.getMonth()]),
+    h("div", "smc-t", null, [h("b", null, money(cur)), chip]),
+    per.length ? h("p", "fine", per.length + " รายการ · แพงสุด " + per[0][0].name + " " + money(per[0][1])) : null,
+  ]);
 }
 export function renderHome() {
   const v = $("v-home");
@@ -158,24 +178,27 @@ export function renderHome() {
       ]);
       k.style.background = "linear-gradient(135deg," + g.c1 + "," + g.c2 + ")";
       k.style.setProperty("--c1", g.c1);
+      asBtn(k, "ดูรายการที่ตัดผ่าน " + c.name, () => showPaySheet(c));
       row.append(k);
     });
     v.append(row);
   }
 
   // การ์ดสรุป
-  const mo = S.subs.reduce((x, s) => x + mon(s), 0);
+  const mo = S.subs.reduce((x, s) => x + mon(s), 0), ye = S.subs.reduce((x, s) => x + yr(s), 0);
   const st = (c, t, val, sub) => h("div", "st4 " + c, null, [h("div", null, t), h("b", null, val), h("small", null, sub)]);
   const tm = S.subs.reduce((x, s) => x + mt(s), 0);
   const g4 = h("div", "grid4", null, [
     st("s1", "ต้องจ่ายเดือนนี้", money(tm), "นับตามวันตัดจริง"),
     st("s3", "เฉลี่ยต่อเดือน", money(mo), "รวมรายปีหารเฉลี่ยแล้ว"),
-    st("s2", "รวมต่อปี", money(mo * 12), "ประมาณการทั้งปี"),
+    st("s2", "รวมต่อปี", money(ye), "ประมาณการทั้งปี"),
     st("s4", "รายการที่ใช้อยู่", act.length, "ไม่นับที่หยุดชั่วคราว"),
   ]);
   v.append(g4);
+  const smc = summaryCard();
+  if (smc) v.append(smc);
   if (anim) {
-    [tm, mo, mo * 12].forEach((x, i) => countUp(g4.children[i].querySelector("b"), x, money));
+    [tm, mo, ye].forEach((x, i) => countUp(g4.children[i].querySelector("b"), x, money));
     countUp(g4.children[3].querySelector("b"), act.length, n => String(Math.round(n)));
   }
 
@@ -460,6 +483,43 @@ export function renderHistory() {
 }
 
 /* ───────── ตั้งค่า ───────── */
+const asBtn = (el, label, fn) => {
+  el.setAttribute("role", "button"); el.setAttribute("aria-label", label); el.tabIndex = 0; el.style.cursor = "pointer";
+  el.onclick = fn;
+  el.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fn(); } };
+};
+// รายการที่ตัดผ่านช่องทางนี้ในเดือนปัจจุบัน
+function showPaySheet(a) {
+  const A = new Date(TD.getFullYear(), TD.getMonth(), 1), E = new Date(TD.getFullYear(), TD.getMonth() + 1, 0);
+  const mine = S.subs.filter(s => s.pay === a.id), L = [];
+  mine.forEach(s => occ(s, A, E).forEach(d => L.push([d, s])));
+  L.sort((p, q) => p[0] - q[0]);
+  const sum = arr => arr.reduce((x, e) => x + thb(e[1], e[0]), 0);
+  const body = h("div");
+  body.append(h("div", "sum", null, [
+    h("div", "s1", null, [h("small", null, "ตัดเดือนนี้"), h("b", null, money(sum(L)))]),
+    h("div", "s2", null, [h("small", null, "จ่ายแล้ว"), h("b", null, money(sum(L.filter(e => e[0] < TD))))]),
+    h("div", "s3", null, [h("small", null, "ที่เหลือ"), h("b", null, money(sum(L.filter(e => e[0] >= TD))))]),
+  ]));
+  const row = (d, s, sub, amt) => {
+    const r = h("div", "row hrow", null, [
+      h("div", "dbox", null, [h("b", null, d.getDate()), h("small", null, MS[d.getMonth()])]),
+      h("div", "rt", null, [h("div", "nm", s.name), h("div", "sb", sub)]), amt ? h("div", "am", money(amt)) : null,
+    ]);
+    r.onclick = () => { closeSheet(); showDetail(s); };
+    return r;
+  };
+  if (L.length) { const c = h("div", "list-card"); L.forEach(([d, s]) => c.append(row(d, s, d < TD ? "ตัดแล้ว" : dayTxt(daysTo(d)), thb(s, d)))); body.append(c); }
+  else body.append(h("p", "empty", mine.length ? "ช่องทางนี้ไม่มีรายการที่ตัดเดือนนี้" : "ยังไม่มีรายการที่ใช้ช่องทางนี้"));
+  const others = mine.filter(s => !L.some(e => e[1] === s));
+  if (others.length && L.length) {
+    body.append(h("p", "fine", "รายการอื่นที่ใช้ช่องทางนี้"));
+    const c = h("div", "list-card");
+    others.forEach(s => { const n = nxt(s); if (n) c.append(row(n, s, s.paused ? "หยุดชั่วคราว" : "ตัดถัดไป " + fdate(iso(n)), 0)); });
+    body.append(c);
+  }
+  sheet(a.name + " · " + MN[TD.getMonth()] + " " + TD.getFullYear(), body);
+}
 // การ์ดช่องทางหักเงิน: ไล่สีตามแบรนด์ + โลโก้ + ยอดหักเดือนนี้
 function payCard(a) {
   const act = S.subs.filter(s => s.pay === a.id && !s.paused);
@@ -473,6 +533,7 @@ function payCard(a) {
     h("div", "bc-b", null, [h("div", null, null, [h("small", null, "หักเดือนนี้"), h("b", null, money(tot))]), h("span", null, act.length + " รายการ")]),
   ]);
   el.style.setProperty("--c1", g.c1); el.style.setProperty("--c2", g.c2);
+  asBtn(el, "ดูรายการที่ตัดผ่าน " + a.name, () => showPaySheet(a));
   const del = xb("trash", "ลบ " + a.name, () => ask("ลบ " + a.name + "?", "รายการที่ใช้ช่องทางนี้จะกลายเป็น ไม่ระบุ", "ลบช่องทาง", () => {
     const ops = S.subs.filter(s => s.pay === a.id).map(s => ({ set: { ...s, pay: "" } }));
     if (ops.length) batchOps(ops);
@@ -581,7 +642,8 @@ const card = (title, desc, kids) => h("section", "card", null, [h("h2", "ct", ti
 function normSub(s) {
   return {
     name: String(s.name).slice(0, 40), plan: String(s.plan || "").slice(0, 40), site: String(s.site || "").slice(0, 80),
-    color: /^#[0-9a-f]{6}$/i.test(s.color) ? s.color : COL[0],
+    color: /^#[0-9a-f]{6}$/i.test(s.color) ? s.color : "",
+    promo: s.promo && +s.promo.n > 0 ? { price: Math.max(0, +s.promo.price || 0), n: Math.min(240, Math.floor(+s.promo.n)) } : null,
     logo: typeof s.logo === "string" && s.logo.startsWith("data:image/") && s.logo.length < 30000 ? s.logo : "",
     price: +s.price, cur: SYM[s.cur] ? s.cur : "THB",
     cy: ["m", "y", "c"].includes(s.cy) ? s.cy : "m", k: Math.max(1, parseInt(s.k) || 1), u: ["d", "w", "m", "y"].includes(s.u) ? s.u : "m",

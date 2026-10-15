@@ -75,6 +75,14 @@ const D = {
   "กำลังดึงโลโก้…": "Fetching logo…", "ดึงโลโก้แล้ว": "Logo fetched",
   "ดึงโลโก้ไม่ได้ อัปโหลดเองได้ที่ไอคอนซ้ายของชื่อบริการ": "Couldn't fetch the logo. You can upload one with the icon next to the name.",
   "โดเมนไม่ถูกต้อง ลองพิมพ์แบบ netflix.com": "That domain looks invalid. Try something like netflix.com.",
+  // สรุป / นับถอยหลัง / โปรโมชัน / ช่องทางหักเงิน
+  "ที่เหลือเดือนนี้": "Left this month", "ราคาโปรโมชัน": "Promotional price", "ราคาโปร (ต่อรอบ)": "Promo price (per charge)", "ใช้กี่รอบ": "For how many charges",
+  "ช่องราคาด้านบนคือราคาเต็ม (ราคาหลังโปรหมด) กรอกราคาโปรและจำนวนรอบที่ใช้ราคานี้": "The price field above is the full price (after the promo ends). Enter the promo price and how many charges it applies to.",
+  "เช่น 99": "e.g. 99", "โปรโมชัน": "Promotion", "จากนั้น": "Then", "ใส่ราคาโปรและจำนวนรอบ": "Enter the promo price and number of charges",
+  "ไม่เลือกก็ได้ จะแสดงเป็นสีเทา แตะสีที่เลือกซ้ำเพื่อล้าง": "Optional. Shows gray if none is chosen. Tap a chosen color again to clear it.",
+  "ตัดเดือนนี้": "This month", "จ่ายแล้ว": "Paid", "ที่เหลือ": "Remaining", "ตัดแล้ว": "Charged",
+  "รายการอื่นที่ใช้ช่องทางนี้": "Other items on this method", "ช่องทางนี้ไม่มีรายการที่ตัดเดือนนี้": "Nothing charges to this method this month",
+  "ยังไม่มีรายการที่ใช้ช่องทางนี้": "No items use this method yet",
   // ปฏิทิน
   "วันตัดเงินของทุกรายการในเดือนนี้": "Billing dates for every item this month", "เดือนก่อน": "Previous month", "เดือนถัดไป": "Next month",
   "รวมเดือนนี้": "Month total", "ตัดเงิน": "Charges", "วันที่หนักสุด": "Heaviest day",
@@ -191,6 +199,14 @@ const D_BTN = { "หยุดชั่วคราว": "Pause" };
 const UNIT = { "วัน": ["day", "days"], "สัปดาห์": ["week", "weeks"], "เดือน": ["month", "months"], "ปี": ["year", "years"] };
 const pl = (n, one, many) => n + " " + (+n === 1 ? one : many);
 const P = [
+  [/^สรุปเดือน(.+)$/, (_, m) => "Summary for " + m],
+  [/^เพิ่มขึ้น (.+?)(?: \((\d+)%\))? จากเดือน(.+)$/, (_, a, p, m) => "Up " + a + (p ? " (" + p + "%)" : "") + " from " + m],
+  [/^ลดลง (.+?)(?: \((\d+)%\))? จากเดือน(.+)$/, (_, a, p, m) => "Down " + a + (p ? " (" + p + "%)" : "") + " from " + m],
+  [/^เท่ากับเดือน(.+)$/, (_, m) => "Same as " + m],
+  [/^(\d+) รายการ · แพงสุด (.+)$/, (_, n, t) => pl(n, "item", "items") + " · top: " + t],
+  [/^(.+) × (\d+) ครั้งแรก · จากนั้น (.+)$/, (_, a, n, c) => a + " for the first " + pl(n, "charge", "charges") + ", then " + c],
+  [/^ตัดถัดไป (.+)$/, (_, d) => "Next charge " + d],
+  [/^ดูรายการที่ตัดผ่าน (.+)$/, (_, n) => "View items charged to " + n],
   [/^พบ (\d+) รายการที่จดไว้ในโหมดลองใช้บนเครื่องนี้ ต้องการนำมาไว้ในบัญชีนี้ไหม$/, (_, n) => "Found " + pl(n, "item", "items") + " logged in trial mode on this device. Add them to this account?"],
   [/^รายการ subscription และประวัติทั้งหมด \((\d+) รายการ\)$/, (_, n) => "All subscriptions and history (" + pl(n, "item", "items") + ")"],
   [/^ทุก (\d+) (วัน|สัปดาห์|เดือน|ปี)$/, (_, n, u) => "Every " + (+n === 1 ? UNIT[u][0] : n + " " + UNIT[u][1])],
@@ -229,6 +245,8 @@ const P = [
 ];
 // ตัวเลข + หน่วย ที่แทรกอยู่กลางข้อความ
 const TOK = [
+  [/(\d+) ครั้งแรก/g, (_, n) => "first " + pl(n, "charge", "charges")],
+  [/โปรอีก (\d+) ครั้ง/g, (_, n) => "promo, " + n + " left"],
   [/· หาร (\d+) คน/g, (_, n) => "· split " + n + " ways"],
   [/อีก (\d+) วัน/g, (_, n) => "in " + pl(n, "day", "days")],
   [/(\d+) รายการ/g, (_, n) => pl(n, "item", "items")],

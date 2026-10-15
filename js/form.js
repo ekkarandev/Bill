@@ -1,7 +1,7 @@
 // ฟอร์มเพิ่ม / แก้ไขรายการ
 import { brandOf, cardColor, markEl } from "./brands.js";
 import {
-  $, h, svg, S, nav, COL, PCOL, PAYG, UN, SYM, iso, prs, TD, addD, dstr, fdate, nth, bdg, acc, payTxt, remTxt,
+  NEUTRAL, $, h, svg, S, nav, COL, PCOL, PAYG, UN, SYM, iso, prs, TD, addD, dstr, fdate, nth, bdg, acc, payTxt, remTxt,
   toast, sheet, closeSheet, fld, remChips, persist, saveSub, newId,
 } from "./core.js";
 
@@ -14,6 +14,8 @@ const PREV = `<aside class="prevc" aria-label="ตัวอย่าง"><div cl
     <div class="pv-h"><div class="lg" id="pvLg"></div><b id="pvNm">ชื่อบริการ</b></div>
     <div class="pv-p"><b id="pvPr">฿0.00</b><span id="pvCy">ทุกเดือน</span></div>
     <div class="pv-l">
+      <div id="pvPmW" hidden><span>โปรโมชัน</span><b id="pvPm"></b></div>
+      <div id="pvAfW" hidden><span>จากนั้น</span><b id="pvAf"></b></div>
       <div><span>ตัดครั้งแรก</span><b id="pvF"></b></div>
       <div><span>หมวดหมู่</span><b id="pvC"></b></div>
       <div><span>จ่ายด้วย</span><b id="pvP"></b></div>
@@ -28,11 +30,12 @@ const TPL = `
 <div class="card">
   <label for="nm" style="margin-top:0">ชื่อบริการ</label>
   <div class="nr"><label class="lgb" id="lgb" title="เพิ่มโลโก้"><input type="file" accept="image/*" id="lgf"><span id="lgp">${svg("upload", 22)}</span></label><input id="nm" placeholder="เช่น Netflix, Spotify" maxlength="40" autocomplete="off"></div>
-  <details open><summary>รายละเอียดบริการ</summary>
+  <details id="det"><summary>รายละเอียดบริการ</summary>
     <label for="pl">แพลน (ไม่บังคับ)</label><input id="pl" placeholder="เช่น Premium" maxlength="40">
     <label for="ws">เว็บไซต์ (ใช้ดึงโลโก้)</label><input id="ws" placeholder="เช่น netflix.com" maxlength="80" autocapitalize="off" autocorrect="off">
     <p class="fine" id="wsS" style="margin:6px 0 0">พิมพ์โดเมน เช่น netflix.com แล้วแอปจะลองดึงโลโก้ให้</p>
     <label>สีประจำรายการ (ใช้เมื่อไม่มีโลโก้)</label><div class="sw" id="sw"></div>
+    <p class="fine" style="margin:8px 0 0">ไม่เลือกก็ได้ จะแสดงเป็นสีเทา แตะสีที่เลือกซ้ำเพื่อล้าง</p>
   </details>
 </div>
 <div class="st">ราคาและรอบการจ่าย</div>
@@ -54,17 +57,19 @@ const TPL = `
 <div class="card">
   <div class="opt">${opt("gift", "#f5a900", "tTrial", "มีช่วงทดลองใช้ฟรี")}
     <div class="ob" id="bTrial" hidden><div class="chips" id="tC"><button type="button" data-d="7">7 วัน</button><button type="button" data-d="14">14 วัน</button><button type="button" data-d="30">30 วัน</button><button type="button" data-d="60">60 วัน</button></div><label for="trialD">หมดทดลองวันที่</label><input id="trialD" type="date"></div></div>
+  <div class="opt">${opt("tag", "#8b5cf6", "tPromo", "ราคาโปรโมชัน")}
+    <div class="ob" id="bPromo" hidden><p class="fine" style="margin:0 0 10px">ช่องราคาด้านบนคือราคาเต็ม (ราคาหลังโปรหมด) กรอกราคาโปรและจำนวนรอบที่ใช้ราคานี้</p><div class="tr2"><div style="flex:1;min-width:0"><label for="pPr" style="margin-top:0">ราคาโปร (ต่อรอบ)</label><input id="pPr" type="number" min="0" step="any" inputmode="decimal" placeholder="เช่น 99"></div><div style="flex:1;min-width:0"><label for="pN" style="margin-top:0">ใช้กี่รอบ</label><input id="pN" type="number" min="1" value="3" inputmode="numeric"></div></div></div></div>
   <div class="opt">${opt("users", "#10b981", "tShare", "หารกับคนอื่น")}
     <div class="ob" id="bShare" hidden><p class="fine" style="margin:0">ใส่แค่ชื่อเล่นพอ ไม่ต้องใส่อีเมลหรือข้อมูลส่วนตัวของคนอื่น</p><div id="ppl"></div><div class="chips"><button type="button" class="o" id="addP">＋ เพิ่มคน</button><button type="button" class="o" id="eqP" disabled>หารเท่ากัน</button></div><p class="fine" id="mine" style="margin:12px 0 0"></p></div></div>
   <div class="opt">${opt("flag", "#0ea5e9", "tEnd", "มีวันสิ้นสุด")}
     <div class="ob" id="bEnd" hidden><div class="chips" id="eM"><button type="button" data-m="n">กำหนดจำนวนครั้ง</button><button type="button" data-m="d">ถึงวันที่</button></div><div class="tr2" id="eNw" style="margin-top:12px"><input id="eN" type="number" min="1" value="12" style="width:110px;text-align:center" aria-label="จำนวนครั้ง"><span class="mut">ครั้ง</span></div><div id="eDw" style="margin-top:12px" hidden><input id="endD" type="date" aria-label="วันที่สิ้นสุด"></div><p class="fine">เช่น ผ่อนสินค้า 10 งวด, สัญญา 12 เดือน, จ่ายล่วงหน้า 3 ครั้ง ใส่ยอดต่อครั้งในช่องราคา</p><p id="eSum" style="font-weight:700;margin:0"></p></div></div>
-  <div class="opt">${opt("bell", "#f43f5e", "tRem", "เตือนรายการนี้").replace('class="tg" id="tRem"', 'class="tg" id="tRem" checked')}
+  <div class="opt">${opt("bell", "#f43f5e", "tRem", "เตือนรายการนี้")}
     <div class="ob" id="bRem"><button type="button" class="lnk" id="remAdj" style="padding:0">ปรับวันเตือน</button><div id="remC" hidden style="margin-top:10px"></div></div></div>
   <div class="opt">${opt("note", "#f97316", "tNote", "โน้ต")}
     <div class="ob" id="bNote" hidden><textarea id="note" rows="3" maxlength="200" placeholder="เช่น แชร์กับเพื่อน 4 คน" aria-label="โน้ต"></textarea></div></div>
 </div></div>${PREV}</div>`;
 
-let lgAuto = true, cyc = "m", col = COL[0], lg = "", curCat = "อื่นๆ", curPay = "", endM = "n", trialN = 7;
+let lgAuto = true, cyc = "m", col = "", lg = "", curCat = "อื่นๆ", curPay = "", endM = "n", trialN = 7;
 let remSel = [], remCustom = false, P = [], editing = null;
 
 const hint = () => {
@@ -89,16 +94,26 @@ function endInfo() {
   return n ? { n, last } : null;
 }
 
+// ราคาโปรโมชันที่กรอกอยู่ (null ถ้าปิดอยู่หรือกรอกไม่ครบ)
+function promoOf() {
+  if (!$("tPromo").checked) return null;
+  const p = parseFloat($("pPr").value), n = parseInt($("pN").value);
+  return p >= 0 && n >= 1 ? { price: p, n } : null;
+}
 // อัปเดตการ์ดตัวอย่าง
 function prev() {
   if (!$("pvNm")) return;
   const nm = $("nm").value.trim(), pr = parseFloat($("price").value) || 0, cu = $("cur").value, l = $("pvLg"), a = acc(curPay);
   l.textContent = ""; l.className = "lg" + (lg || nm ? "" : " empty");
-  l.style.background = lg || !nm ? "transparent" : col;
+  l.style.background = lg || !nm ? "transparent" : col || NEUTRAL;
   if (lg) { const i = new Image(); i.src = lg; i.alt = ""; l.append(i); } else if (nm) l.textContent = nm[0].toUpperCase();
   $("pvNm").textContent = nm || "ชื่อบริการ"; $("pvNm").classList.toggle("ph", !nm);
-  $("pvPr").textContent = SYM[cu] + pr.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  $("pvCy").textContent = cyc === "m" ? "ทุกเดือน" : cyc === "y" ? "ทุกปี" : "ทุก " + (parseInt($("ck").value) || 1) + " " + UN[$("cu").value];
+  const f2 = x => SYM[cu] + x.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }), pm = promoOf();
+  const cyT = cyc === "m" ? "ทุกเดือน" : cyc === "y" ? "ทุกปี" : "ทุก " + (parseInt($("ck").value) || 1) + " " + UN[$("cu").value];
+  $("pvPr").textContent = f2(pm ? pm.price : pr);
+  $("pvCy").textContent = cyT;
+  $("pvPmW").hidden = $("pvAfW").hidden = !pm;
+  if (pm) { $("pvPm").textContent = pm.n + " ครั้งแรก"; $("pvAf").textContent = f2(pr) + " / " + (cyc === "m" ? "เดือน" : cyc === "y" ? "ปี" : (parseInt($("ck").value) || 1) + " " + UN[$("cu").value]); }
   $("pvF").textContent = ft() ? fdate(ft()) : "—";
   $("pvC").textContent = curCat;
   $("pvP").textContent = a ? payTxt(a) : "ไม่ระบุ";
@@ -115,6 +130,8 @@ function upd() {
   $("eSum").textContent = e ? "ตัดทั้งหมด " + e.n + " ครั้ง · ครั้งสุดท้าย " + fdate(iso(e.last)) : "";
   sub("sRem", c("tRem"), (remCustom ? "กำหนดเอง" : "ตามตั้งค่า") + " · " + remTxt(remSel));
   sub("sNote", c("tNote"), "เช่น แชร์กับเพื่อน 4 คน");
+  const pm = promoOf(), cu0 = SYM[$("cur").value], pr0 = parseFloat($("price").value) || 0;
+  sub("sPromo", c("tPromo"), pm ? cu0 + pm.price.toLocaleString("th-TH") + " × " + pm.n + " ครั้งแรก · จากนั้น " + cu0 + pr0.toLocaleString("th-TH") : "ใส่ราคาโปรและจำนวนรอบ");
   const pr = parseFloat($("price").value) || 0;
   $("mine").textContent = "ส่วนของคุณ " + SYM[$("cur").value] + Math.max(0, pr - P.reduce((a, p) => a + (+p.amt || 0), 0)).toLocaleString("th-TH");
   $("vCat").textContent = curCat;
@@ -262,24 +279,26 @@ export function newAcct(after) {
 function reset() {
   ["nm", "pl", "ws", "price", "note", "endD"].forEach(i => { $(i).value = ""; });
   $("cur").value = "THB"; $("first").value = iso(TD); $("ck").value = 1; $("cu").value = "m"; $("eN").value = 12;
-  document.querySelectorAll(".tg").forEach(c => { c.checked = c.id === "tRem"; c.onchange(); });
+  document.querySelectorAll(".tg").forEach(c => { c.checked = false; c.onchange(); });
   P = []; drawP();
   remSel = S.rem.slice(); remCustom = false; drawRem(); $("remC").hidden = true;
   curCat = (S.cats.find(c => c.n === "อื่นๆ") || S.cats[0]).n; curPay = "";
-  setEM("n"); setTN(7); setCyc("m"); setCol(COL[0]); setLogo(""); lgAuto = true; $("wsS").textContent = WS_HINT;
+  setEM("n"); setTN(7); setCyc("m"); setCol(""); $("det").open = false; $("pPr").value = ""; $("pN").value = 3; setLogo(""); lgAuto = true; $("wsS").textContent = WS_HINT;
 }
 function fill(s) {
   reset();
   $("nm").value = s.name; $("pl").value = s.plan || ""; $("ws").value = s.site || "";
   $("price").value = s.price; $("cur").value = s.cur; $("first").value = s.start || s.first;
   setCyc(s.cy); $("ck").value = s.cy === "c" ? s.k : 1; $("cu").value = s.cy === "c" ? s.u : "m";
-  setCol(s.color || COL[0]); setLogo(s.logo); lgAuto = !s.logo;
+  setCol(s.color || ""); setLogo(s.logo); lgAuto = !s.logo;
+  $("det").open = !!(s.plan || s.site || s.color);
+  if (s.promo && s.promo.n > 0) { $("tPromo").checked = true; $("pPr").value = s.promo.price; $("pN").value = s.promo.n; }
   curCat = s.cat || curCat; curPay = s.pay || "";
   if (s.trial) { $("tTrial").checked = true; $("trialD").value = s.trial; setTN(0); }
   if ((s.ppl || []).length) { $("tShare").checked = true; P = s.ppl.map(p => ({ name: p.name, amt: p.amt, until: p.until || "" })); drawP(); }
   if (s.end) { $("tEnd").checked = true; $("endD").value = s.end; $("eN").value = s.endN || 12; setEM(s.endN ? "n" : "d"); }
-  if (s.rem === -1) $("tRem").checked = false;
-  else if (Array.isArray(s.rem)) { remSel = s.rem.slice(); remCustom = true; drawRem(); }
+  $("tRem").checked = s.rem !== -1;
+  if (Array.isArray(s.rem)) { remSel = s.rem.slice(); remCustom = true; drawRem(); }
   if (s.note) { $("tNote").checked = true; $("note").value = s.note; }
   document.querySelectorAll(".tg").forEach(c => c.onchange());
   upd();
@@ -300,11 +319,12 @@ function save() {
   if (!f) return toast("เลือกวันตัดเงินครั้งแรก");
   const e = g("tEnd") ? endInfo() : null;
   if (g("tEnd") && !e) return toast("ใส่จำนวนครั้งหรือวันสิ้นสุด");
+  if (g("tPromo") && !promoOf()) return toast("ใส่ราคาโปรและจำนวนรอบ");
   const d = draftSub();
   const sub = {
     id: editing ? editing.id : newId(),
     name, plan: $("pl").value.trim(), site: $("ws").value.trim(), color: col, logo: lg,
-    price, cur: $("cur").value, cy: cyc, k: d.k, u: d.u, first: f, start: $("first").value,
+    price, promo: g("tPromo") ? promoOf() : null, cur: $("cur").value, cy: cyc, k: d.k, u: d.u, first: f, start: $("first").value,
     cat: curCat, pay: curPay,
     trial: g("tTrial") ? $("trialD").value : "",
     ppl: g("tShare") ? P.filter(p => p.name.trim() || +p.amt).map(p => ({ name: p.name.trim(), amt: +p.amt || 0, until: p.until || "" })) : [],
@@ -325,7 +345,7 @@ export function initForm() {
   $("v-add").innerHTML = TPL;
   COL.forEach(c => {
     const b = h("button"); b.type = "button"; b.style.background = c; b.dataset.c = c;
-    b.setAttribute("aria-label", "สี " + c); b.onclick = () => setCol(c); $("sw").append(b);
+    b.setAttribute("aria-label", "สี " + c); b.onclick = () => setCol(col === c ? "" : c); $("sw").append(b);
   });
   document.querySelectorAll("#cyc button").forEach(b => { b.onclick = () => setCyc(b.dataset.c); });
   document.querySelectorAll(".tg").forEach(c => { c.onchange = () => { $("b" + c.id.slice(1)).hidden = !c.checked; }; });
